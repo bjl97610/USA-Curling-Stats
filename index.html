@@ -1,0 +1,3098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#c41e3a">
+  <meta name="description" content="USA Curling Shot Tracker - Track shots offline during games">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Shot Tracker">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/x-icon" href="icons/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+  <title>USA Curling Shot Tracker</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --primary: #c41e3a;
+      --primary-dark: #a01830;
+      --secondary: #1a1a2e;
+      --accent: #0f3460;
+      --ice: #e8f4f8;
+      --ice-dark: #b8d4dc;
+      --gold: #d4af37;
+      --success: #2d6a4f;
+      --warning: #e9c46a;
+      --text: #1a1a2e;
+      --text-light: #6b7280;
+      --white: #ffffff;
+      --shadow: 0 4px 20px rgba(0,0,0,0.1);
+      --shadow-lg: 0 10px 40px rgba(0,0,0,0.15);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, var(--ice) 0%, var(--ice-dark) 100%);
+      min-height: 100vh;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    #root {
+      min-height: 100vh;
+    }
+    
+    /* Loading state */
+    .loading-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 24px;
+    }
+    
+    .loading-logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 48px;
+      color: var(--primary);
+      letter-spacing: 2px;
+    }
+    
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--ice-dark);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="loading-screen">
+      <div class="loading-logo">SHOT TRACKER</div>
+      <div class="loading-spinner"></div>
+    </div>
+  </div>
+  
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((registration) => {
+            console.log('SW registered:', registration.scope);
+          })
+          .catch((error) => {
+            console.log('SW registration failed:', error);
+          });
+      });
+    }
+  </script>
+  
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  
+  <script type="text/babel" data-type="module">
+    const { useState, useEffect, useReducer, useCallback, useMemo, createContext, useContext } = React;
+
+    // ============================================
+    // DATA & CONSTANTS
+    // ============================================
+    
+    const PLAYER_DATA = [
+      { name: "Danny Casper", team: "Casper", position: "Fourth", userId: 2807 },
+      { name: "Luc Violette", team: "Casper", position: "Third", userId: 2809 },
+      { name: "Ben Richardson", team: "Casper", position: "Second", userId: 2806 },
+      { name: "Aidan Oldenburg", team: "Casper", position: "Lead", userId: 2810 },
+      { name: "Rich Ruohonen", team: "Casper", position: "Fifth", userId: 10505 },
+      { name: "Korey Dropkin", team: "Dropkin", position: "Fourth", userId: 3250, mdTeam: "Dropkin/Thiesse" },
+      { name: "Thomas Howell", team: "Dropkin", position: "Third", userId: 3262 },
+      { name: "Andrew Stopera", team: "Dropkin", position: "Second", userId: 3237 },
+      { name: "Mark Fenner", team: "Dropkin", position: "Lead", userId: 3254 },
+      { name: "Caden Hebert", team: "Hebert", position: "Fourth", userId: 10514 },
+      { name: "Jackson Bestland", team: "Hebert", position: "Third", userId: 10513 },
+      { name: "Benji Paral", team: "Hebert", position: "Second", userId: 10512 },
+      { name: "Jack Wendtland", team: "Hebert", position: "Lead", userId: 10511 },
+      { name: "Daniel Laufer", team: "Hebert", position: "Fifth", userId: 5795 },
+      { name: "Allory Johnson", team: "Johnson", position: "Fourth", userId: 10507 },
+      { name: "Gianna Johnson", team: "Johnson", position: "Third", userId: 10508 },
+      { name: "Morgan Zacher", team: "Johnson", position: "Second", userId: 10509 },
+      { name: "Bailey Vaydich", team: "Johnson", position: "Lead", userId: 10510 },
+      { name: "Ella Wendling", team: "Johnson", position: "Fifth", userId: 10736 },
+      { name: "John Shuster", team: "Shuster", position: "Fourth", userId: 3249 },
+      { name: "Chris Plys", team: "Shuster", position: "Third", userId: 3239 },
+      { name: "Colin Hufman", team: "Shuster", position: "Second", userId: 3240 },
+      { name: "Matt Hamilton", team: "Shuster", position: "Lead", userId: 3246 },
+      { name: "Tabitha Peterson", team: "Peterson", position: "Fourth", userId: 3263 },
+      { name: "Cory Thiesse", team: "Peterson", position: "Third", userId: 3242, mdTeam: "Dropkin/Thiesse" },
+      { name: "Taylor Anderson", team: "Peterson", position: "Second", userId: 3261 },
+      { name: "Tara Peterson", team: "Peterson", position: "Lead", userId: 3257 },
+      { name: "Aileen Gerving", team: "Peterson", position: "Fifth", userId: 3235 },
+      { name: "Delaney Strouse", team: "Strouse", position: "Fourth", userId: 2815 },
+      { name: "Anne O'Hara", team: "Strouse", position: "Third", userId: 3236 },
+      { name: "Sydney Mullaney", team: "Strouse", position: "Second", userId: 2817 },
+      { name: "Maddie Bear", team: "Strouse", position: "Lead", userId: 10506 },
+      { name: "Matthew Thums", team: "Wheelchair", position: "Fourth", userId: 3255 },
+      { name: "Oyuna Uranchimeg", team: "Wheelchair", position: "Third", userId: 3238 },
+      { name: "Sean O'Neill", team: "Wheelchair", position: "Second", userId: 6555 },
+      { name: "Dan Rose", team: "Wheelchair", position: "Lead", userId: 3244 },
+      { name: "Steve Emt", team: null, position: null, userId: 3245, mdTeam: "Emt/Dwyer" },
+      { name: "Laura Dwyer", team: null, position: null, userId: 3252, mdTeam: "Emt/Dwyer" },
+    ];
+
+    const TEAMS = [...new Set(PLAYER_DATA.filter(p => p.team).map(p => p.team))].sort();
+    const MD_TEAMS = [...new Set(PLAYER_DATA.filter(p => p.mdTeam).map(p => p.mdTeam))].sort();
+
+    const SHOT_TYPES = [
+      "Center Guard", "Corner Guard", "Draw", "Freeze", "Tap", "Dig",
+      "Peel", "Double Peel", "Takeout", "Double Takeout", "Hit and Roll",
+      "Runback", "Trick Shot", "Throw Through"
+    ];
+
+    const MISS_TYPES = [
+      "Over Swept", "Under Swept", "Light", "Heavy",
+      "Line - Wide", "Line - Narrow", "Line Call", "Broom Placement",
+      "Pick", "Burnt"
+    ];
+
+    const ICE_CONDITIONS = ["13.5", "14", "14.5", "15", "15.5"];
+    const SHOT_WEIGHTS = ["Guard", "Draw", "12.5", "11.5", "10.5", "9.5", "8.5", "7.5", "6.5"];
+    const COMP_ROUNDS = ["Pool Play", "Quarter-Final", "Semi-Final", "Final"];
+
+    const POSITION_MAP = {
+      "4 Person": { positions: ["Lead", "Second", "Third", "Fourth"], maxShots: 8 },
+      "3 Person": { positions: ["Lead", "Second", "Third"], maxShots: 8 },
+      "Mixed Doubles": { positions: ["First/Last", "Middle"], maxShots: 5 }
+    };
+
+    // ============================================
+    // STORAGE UTILITIES
+    // ============================================
+    
+    const Storage = {
+      save: (key, data) => {
+        try {
+          localStorage.setItem(key, JSON.stringify(data));
+        } catch (e) {
+          console.error('Storage save failed:', e);
+        }
+      },
+      load: (key, defaultValue = null) => {
+        try {
+          const data = localStorage.getItem(key);
+          return data ? JSON.parse(data) : defaultValue;
+        } catch (e) {
+          console.error('Storage load failed:', e);
+          return defaultValue;
+        }
+      },
+      remove: (key) => {
+        try {
+          localStorage.removeItem(key);
+        } catch (e) {
+          console.error('Storage remove failed:', e);
+        }
+      }
+    };
+
+    // ============================================
+    // GAME STATE REDUCER
+    // ============================================
+    
+    const initialGameState = {
+      gameType: "4 Person",
+      totalEnds: 10,  // 8 or 10 ends
+      teamName: "",
+      opponent: "",
+      firstEndHammer: "",
+      competition: "",
+      compRound: "Pool Play",
+      gameDate: new Date().toISOString().split('T')[0],
+      lineup: {},
+      pendingLineup: null,  // Stores pending lineup changes awaiting confirmation
+      pendingGameType: null, // Stores pending game type change
+      currentEnd: 1,
+      currentShot: 1,
+      currentHammer: "",
+      lastIceCondition: "14",
+      shots: [],
+      gameEnded: false,
+      activeTab: "setup"
+    };
+
+    function gameReducer(state, action) {
+      switch (action.type) {
+        case 'SET_GAME_TYPE':
+          // If game has started (shots exist), set as pending change
+          if (state.shots.length > 0) {
+            // Build new lineup for the new game type using same team
+            const teamPlayers = PLAYER_DATA.filter(p => 
+              action.payload === "Mixed Doubles" 
+                ? p.mdTeam === state.teamName
+                : p.team === state.teamName
+            );
+            const newLineup = {};
+            const positions = POSITION_MAP[action.payload].positions;
+            positions.forEach(pos => {
+              // Try to keep existing player if position exists, otherwise use default
+              if (state.lineup[pos]) {
+                newLineup[pos] = state.lineup[pos];
+              } else {
+                const player = teamPlayers.find(p => p.position === pos);
+                if (player) newLineup[pos] = player.name;
+              }
+            });
+            return { 
+              ...state, 
+              pendingGameType: action.payload,
+              pendingLineup: newLineup
+            };
+          }
+          return { 
+            ...state, 
+            gameType: action.payload,
+            teamName: "",
+            lineup: {},
+            pendingLineup: null,
+            pendingGameType: null,
+            currentHammer: "",
+            firstEndHammer: ""
+          };
+        
+        case 'SET_TEAM':
+          const teamPlayers = PLAYER_DATA.filter(p => 
+            action.payload.gameType === "Mixed Doubles" 
+              ? p.mdTeam === action.payload.team
+              : p.team === action.payload.team
+          );
+          const newLineup = {};
+          const positions = POSITION_MAP[action.payload.gameType].positions;
+          positions.forEach(pos => {
+            const player = teamPlayers.find(p => p.position === pos);
+            if (player) newLineup[pos] = player.name;
+          });
+          return { 
+            ...state, 
+            teamName: action.payload.team,
+            lineup: newLineup,
+            pendingLineup: null,
+            pendingGameType: null
+          };
+        
+        case 'SET_LINEUP':
+          // If game has started (shots exist), set as pending change
+          if (state.shots.length > 0) {
+            return { 
+              ...state, 
+              pendingLineup: { 
+                ...(state.pendingLineup || state.lineup), 
+                [action.payload.position]: action.payload.player 
+              } 
+            };
+          }
+          return { ...state, lineup: { ...state.lineup, [action.payload.position]: action.payload.player } };
+        
+        case 'APPLY_LINEUP_CHANGES':
+          return { 
+            ...state, 
+            gameType: state.pendingGameType || state.gameType,
+            lineup: state.pendingLineup || state.lineup,
+            pendingLineup: null,
+            pendingGameType: null
+          };
+        
+        case 'CANCEL_LINEUP_CHANGES':
+          return { ...state, pendingLineup: null, pendingGameType: null };
+        
+        case 'SET_FIELD':
+          return { ...state, [action.payload.field]: action.payload.value };
+        
+        case 'START_GAME':
+          return { ...state, activeTab: "tracking", currentHammer: state.firstEndHammer };
+        
+        case 'LOG_SHOT':
+          const newShots = [...state.shots, action.payload];
+          const maxShots = POSITION_MAP[state.gameType].maxShots;
+          let nextEnd = state.currentEnd;
+          let nextShot = state.currentShot + 1;
+          let nextHammer = state.currentHammer;
+          
+          if (state.currentShot === maxShots) {
+            // End completed
+            if (action.payload.score) {
+              const [teamScore, oppScore] = action.payload.score.split('-').map(Number);
+              if (teamScore > oppScore) {
+                nextHammer = state.opponent;
+              } else if (oppScore > teamScore) {
+                nextHammer = state.teamName;
+              }
+            }
+            nextEnd = state.currentEnd + 1;
+            nextShot = 1;
+          }
+          
+          return {
+            ...state,
+            shots: newShots,
+            currentEnd: nextEnd,
+            currentShot: nextShot,
+            currentHammer: nextHammer,
+            lastIceCondition: action.payload.iceCondition
+          };
+        
+        case 'UNDO_SHOT':
+          if (state.shots.length === 0) return state;
+          const prevShots = state.shots.slice(0, -1);
+          const lastShot = state.shots[state.shots.length - 1];
+          return {
+            ...state,
+            shots: prevShots,
+            currentEnd: lastShot.end,
+            currentShot: lastShot.shotNumber,
+            currentHammer: lastShot.hammer
+          };
+        
+        case 'UPDATE_SCORE':
+          // Update score for a specific end
+          return {
+            ...state,
+            shots: state.shots.map(shot => {
+              if (shot.end === action.payload.end && shot.shotNumber === POSITION_MAP[state.gameType].maxShots) {
+                return { ...shot, score: action.payload.score };
+              }
+              return shot;
+            })
+          };
+        
+        case 'UPDATE_SHOT':
+          // Update a specific shot by index
+          return {
+            ...state,
+            shots: state.shots.map((shot, idx) => 
+              idx === action.payload.index ? { ...shot, ...action.payload.updates } : shot
+            )
+          };
+        
+        case 'END_GAME':
+          return { ...state, gameEnded: true, activeTab: "analytics" };
+        
+        case 'NEW_GAME':
+          return { ...initialGameState };
+        
+        case 'SET_TAB':
+          return { ...state, activeTab: action.payload };
+        
+        case 'LOAD_STATE':
+          return { ...state, ...action.payload };
+        
+        default:
+          return state;
+      }
+    }
+
+    // ============================================
+    // CONTEXT
+    // ============================================
+    
+    const GameContext = createContext();
+
+    // ============================================
+    // STYLES (CSS-in-JS)
+    // ============================================
+    
+    const styles = {
+      app: {
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column'
+      },
+      header: {
+        background: 'linear-gradient(135deg, var(--secondary) 0%, var(--accent) 100%)',
+        color: 'white',
+        padding: '16px 24px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        boxShadow: 'var(--shadow-lg)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100
+      },
+      logo: {
+        fontFamily: "'Bebas Neue', sans-serif",
+        fontSize: '28px',
+        letterSpacing: '2px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px'
+      },
+      logoIcon: {
+        height: '40px',
+        width: 'auto'
+      },
+      tabs: {
+        display: 'flex',
+        gap: '4px',
+        background: 'rgba(255,255,255,0.1)',
+        padding: '4px',
+        borderRadius: 'var(--radius)'
+      },
+      tab: {
+        padding: '8px 20px',
+        border: 'none',
+        background: 'transparent',
+        color: 'rgba(255,255,255,0.7)',
+        cursor: 'pointer',
+        borderRadius: 'var(--radius-sm)',
+        fontWeight: '600',
+        fontSize: '14px',
+        transition: 'all 0.2s'
+      },
+      tabActive: {
+        background: 'white',
+        color: 'var(--secondary)'
+      },
+      main: {
+        flex: 1,
+        padding: '24px',
+        maxWidth: '1200px',
+        margin: '0 auto',
+        width: '100%'
+      },
+      card: {
+        background: 'white',
+        borderRadius: 'var(--radius)',
+        boxShadow: 'var(--shadow)',
+        padding: '24px',
+        marginBottom: '20px'
+      },
+      cardTitle: {
+        fontFamily: "'Bebas Neue', sans-serif",
+        fontSize: '22px',
+        letterSpacing: '1px',
+        color: 'var(--secondary)',
+        marginBottom: '20px',
+        paddingBottom: '12px',
+        borderBottom: '2px solid var(--ice)'
+      },
+      grid: {
+        display: 'grid',
+        gap: '16px'
+      },
+      grid2: {
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))'
+      },
+      grid3: {
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))'
+      },
+      grid4: {
+        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))'
+      },
+      formGroup: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px'
+      },
+      label: {
+        fontSize: '13px',
+        fontWeight: '600',
+        color: 'var(--text-light)',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px'
+      },
+      input: {
+        padding: '12px 14px',
+        border: '2px solid var(--ice)',
+        borderRadius: 'var(--radius-sm)',
+        fontSize: '15px',
+        transition: 'all 0.2s',
+        outline: 'none',
+        width: '100%'
+      },
+      select: {
+        padding: '12px 14px',
+        border: '2px solid var(--ice)',
+        borderRadius: 'var(--radius-sm)',
+        fontSize: '15px',
+        background: 'white',
+        cursor: 'pointer',
+        outline: 'none',
+        width: '100%'
+      },
+      button: {
+        padding: '14px 28px',
+        border: 'none',
+        borderRadius: 'var(--radius-sm)',
+        fontSize: '15px',
+        fontWeight: '600',
+        cursor: 'pointer',
+        transition: 'all 0.2s',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px'
+      },
+      buttonPrimary: {
+        background: 'var(--primary)',
+        color: 'white'
+      },
+      buttonSecondary: {
+        background: 'var(--secondary)',
+        color: 'white'
+      },
+      buttonSuccess: {
+        background: 'var(--success)',
+        color: 'white'
+      },
+      buttonWarning: {
+        background: 'var(--warning)',
+        color: 'var(--text)'
+      },
+      buttonOutline: {
+        background: 'transparent',
+        border: '2px solid var(--ice-dark)',
+        color: 'var(--text)'
+      },
+      radioGroup: {
+        display: 'flex',
+        gap: '8px',
+        flexWrap: 'wrap'
+      },
+      radioButton: {
+        padding: '10px 18px',
+        border: '2px solid var(--ice)',
+        borderRadius: 'var(--radius-sm)',
+        background: 'white',
+        cursor: 'pointer',
+        fontSize: '14px',
+        fontWeight: '500',
+        transition: 'all 0.2s'
+      },
+      radioButtonActive: {
+        borderColor: 'var(--primary)',
+        background: 'var(--primary)',
+        color: 'white'
+      },
+      shotCounter: {
+        background: 'linear-gradient(135deg, var(--secondary) 0%, var(--accent) 100%)',
+        color: 'white',
+        padding: '16px 24px',
+        borderRadius: 'var(--radius)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '20px'
+      },
+      shotCounterText: {
+        fontFamily: "'Bebas Neue', sans-serif",
+        fontSize: '24px',
+        letterSpacing: '1px'
+      },
+      hammerBadge: {
+        background: 'var(--gold)',
+        color: 'var(--text)',
+        padding: '6px 14px',
+        borderRadius: '20px',
+        fontSize: '13px',
+        fontWeight: '600'
+      },
+      scoreInputs: {
+        background: 'var(--ice)',
+        padding: '20px',
+        borderRadius: 'var(--radius)',
+        marginTop: '20px'
+      },
+      table: {
+        width: '100%',
+        borderCollapse: 'collapse',
+        fontSize: '14px'
+      },
+      th: {
+        background: 'var(--secondary)',
+        color: 'white',
+        padding: '12px',
+        textAlign: 'left',
+        fontWeight: '600'
+      },
+      td: {
+        padding: '12px',
+        borderBottom: '1px solid var(--ice)'
+      },
+      notification: {
+        position: 'fixed',
+        bottom: '24px',
+        right: '24px',
+        padding: '16px 24px',
+        borderRadius: 'var(--radius)',
+        color: 'white',
+        fontWeight: '500',
+        boxShadow: 'var(--shadow-lg)',
+        animation: 'slideIn 0.3s ease',
+        zIndex: 1000
+      },
+      modal: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: '20px'
+      },
+      modalContent: {
+        background: 'white',
+        borderRadius: 'var(--radius)',
+        padding: '32px',
+        maxWidth: '400px',
+        width: '100%',
+        textAlign: 'center'
+      }
+    };
+
+    // ============================================
+    // COMPONENTS
+    // ============================================
+
+    // Notification Component
+    function Notification({ message, type, onClose }) {
+      useEffect(() => {
+        const timer = setTimeout(onClose, 3000);
+        return () => clearTimeout(timer);
+      }, [onClose]);
+
+      const bgColor = type === 'success' ? 'var(--success)' : 
+                      type === 'error' ? 'var(--primary)' : 'var(--secondary)';
+
+      return (
+        <div style={{ ...styles.notification, background: bgColor }}>
+          {message}
+        </div>
+      );
+    }
+
+    // Confirmation Modal
+    function ConfirmModal({ title, message, onConfirm, onCancel }) {
+      return (
+        <div style={styles.modal}>
+          <div style={styles.modalContent}>
+            <h3 style={{ marginBottom: '12px', color: 'var(--secondary)' }}>{title}</h3>
+            <p style={{ marginBottom: '24px', color: 'var(--text-light)' }}>{message}</p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button 
+                style={{ ...styles.button, ...styles.buttonOutline }}
+                onClick={onCancel}
+              >
+                Cancel
+              </button>
+              <button 
+                style={{ ...styles.button, ...styles.buttonPrimary }}
+                onClick={onConfirm}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Header Component
+    function Header({ activeTab, onTabChange, gameStarted }) {
+      const tabs = gameStarted 
+        ? [
+            { id: 'tracking', label: 'Tracking' },
+            { id: 'analytics', label: 'Analytics' },
+            { id: 'editor', label: 'Editor' }
+          ]
+        : [{ id: 'setup', label: 'Setup' }];
+
+      return (
+        <header style={styles.header}>
+          <div style={styles.logo}>
+            <img src="usa_curling_logo.png" alt="USA Curling" style={styles.logoIcon} />
+            USA CURLING SHOT TRACKER
+          </div>
+          <div style={styles.tabs}>
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                style={{
+                  ...styles.tab,
+                  ...(activeTab === tab.id ? styles.tabActive : {})
+                }}
+                onClick={() => onTabChange(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </header>
+      );
+    }
+
+    // Setup Panel Component (for initial game setup before game starts)
+    function SetupPanel({ state, dispatch, onStartGame }) {
+      const { gameType, totalEnds, teamName, opponent, firstEndHammer, competition, compRound, gameDate, lineup } = state;
+      
+      const teams = gameType === "Mixed Doubles" ? MD_TEAMS : TEAMS;
+      const positions = POSITION_MAP[gameType].positions;
+      
+      const teamPlayers = useMemo(() => {
+        if (!teamName) return [];
+        return PLAYER_DATA.filter(p => 
+          gameType === "Mixed Doubles" ? p.mdTeam === teamName : p.team === teamName
+        ).map(p => p.name).sort();
+      }, [teamName, gameType]);
+
+      // Hammer options depend on team and opponent being filled
+      const hammerOptions = useMemo(() => {
+        const options = [];
+        if (teamName) options.push(teamName);
+        if (opponent) options.push(opponent);
+        return options;
+      }, [teamName, opponent]);
+
+      const canStart = teamName && opponent && competition && firstEndHammer &&
+                       positions.every(pos => lineup[pos]);
+
+      return (
+        <div>
+          {/* Game Type and Ends - Side by Side */}
+          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+            <div style={{ ...styles.card, flex: '1 1 60%', minWidth: '280px' }}>
+              <h2 style={styles.cardTitle}>GAME TYPE</h2>
+              <div style={styles.radioGroup}>
+                {["4 Person", "3 Person", "Mixed Doubles"].map(type => (
+                  <button
+                    key={type}
+                    style={{
+                      ...styles.radioButton,
+                      ...(gameType === type ? styles.radioButtonActive : {})
+                    }}
+                    onClick={() => dispatch({ type: 'SET_GAME_TYPE', payload: type })}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ ...styles.card, flex: '1 1 30%', minWidth: '180px' }}>
+              <h2 style={styles.cardTitle}>ENDS</h2>
+              <div style={styles.radioGroup}>
+                {[8, 10].map(ends => (
+                  <button
+                    key={ends}
+                    style={{
+                      ...styles.radioButton,
+                      ...(totalEnds === ends ? styles.radioButtonActive : {})
+                    }}
+                    onClick={() => dispatch({ type: 'SET_FIELD', payload: { field: 'totalEnds', value: ends } })}
+                  >
+                    {ends}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>TEAM SETUP</h2>
+            <div style={{ ...styles.grid, ...styles.grid2 }}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Team</label>
+                <select
+                  style={styles.select}
+                  value={teamName}
+                  onChange={(e) => dispatch({ 
+                    type: 'SET_TEAM', 
+                    payload: { team: e.target.value, gameType } 
+                  })}
+                >
+                  <option value="">Select Team...</option>
+                  {teams.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              
+              {positions.map(pos => (
+                <div key={pos} style={styles.formGroup}>
+                  <label style={styles.label}>{pos}</label>
+                  <select
+                    style={styles.select}
+                    value={lineup[pos] || ""}
+                    onChange={(e) => dispatch({ 
+                      type: 'SET_LINEUP', 
+                      payload: { position: pos, player: e.target.value } 
+                    })}
+                    disabled={!teamName}
+                  >
+                    <option value="">Select Player...</option>
+                    {teamPlayers.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>GAME DETAILS</h2>
+            <div style={{ ...styles.grid, ...styles.grid2 }}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Opponent</label>
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={opponent}
+                  onChange={(e) => dispatch({ 
+                    type: 'SET_FIELD', 
+                    payload: { field: 'opponent', value: e.target.value } 
+                  })}
+                  placeholder="Enter opponent name..."
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Hammer in 1st End</label>
+                <select
+                  style={styles.select}
+                  value={firstEndHammer}
+                  onChange={(e) => dispatch({ 
+                    type: 'SET_FIELD', 
+                    payload: { field: 'firstEndHammer', value: e.target.value } 
+                  })}
+                  disabled={!teamName || !opponent}
+                >
+                  <option value="">Select...</option>
+                  {hammerOptions.map(h => <option key={h} value={h}>{h}</option>)}
+                </select>
+              </div>
+              
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Competition</label>
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={competition}
+                  onChange={(e) => dispatch({ 
+                    type: 'SET_FIELD', 
+                    payload: { field: 'competition', value: e.target.value } 
+                  })}
+                  placeholder="Enter competition name..."
+                />
+              </div>
+              
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Round</label>
+                <select
+                  style={styles.select}
+                  value={compRound}
+                  onChange={(e) => dispatch({ 
+                    type: 'SET_FIELD', 
+                    payload: { field: 'compRound', value: e.target.value } 
+                  })}
+                >
+                  {COMP_ROUNDS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Date</label>
+                <input
+                  style={styles.input}
+                  type="date"
+                  value={gameDate}
+                  onChange={(e) => dispatch({ 
+                    type: 'SET_FIELD', 
+                    payload: { field: 'gameDate', value: e.target.value } 
+                  })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ textAlign: 'center', marginTop: '24px' }}>
+            <button
+              style={{ 
+                ...styles.button, 
+                ...styles.buttonSuccess,
+                padding: '16px 48px',
+                fontSize: '18px',
+                opacity: canStart ? 1 : 0.5
+              }}
+              onClick={onStartGame}
+              disabled={!canStart}
+            >
+              🥌 Start Game
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Editor Panel Component (after game has started)
+    function EditorPanel({ state, dispatch, onNotify }) {
+      const [activeSubTab, setActiveSubTab] = useState('gameSettings');
+      
+      const subTabStyle = (isActive) => ({
+        padding: '10px 20px',
+        border: 'none',
+        background: isActive ? 'var(--primary)' : 'var(--ice)',
+        color: isActive ? 'white' : 'var(--text)',
+        cursor: 'pointer',
+        borderRadius: 'var(--radius-sm)',
+        fontWeight: '600',
+        fontSize: '14px',
+        transition: 'all 0.2s'
+      });
+
+      return (
+        <div>
+          {/* Sub-tab navigation */}
+          <div style={{ 
+            display: 'flex', 
+            gap: '8px', 
+            marginBottom: '24px',
+            background: 'white',
+            padding: '8px',
+            borderRadius: 'var(--radius)',
+            boxShadow: 'var(--shadow)'
+          }}>
+            <button 
+              style={subTabStyle(activeSubTab === 'gameSettings')}
+              onClick={() => setActiveSubTab('gameSettings')}
+            >
+              Game Settings
+            </button>
+            <button 
+              style={subTabStyle(activeSubTab === 'score')}
+              onClick={() => setActiveSubTab('score')}
+            >
+              Score
+            </button>
+            <button 
+              style={subTabStyle(activeSubTab === 'shots')}
+              onClick={() => setActiveSubTab('shots')}
+            >
+              Shots
+            </button>
+          </div>
+
+          {activeSubTab === 'gameSettings' && (
+            <GameSettingsSubTab state={state} dispatch={dispatch} onNotify={onNotify} />
+          )}
+          {activeSubTab === 'score' && (
+            <ScoreEditorSubTab state={state} dispatch={dispatch} onNotify={onNotify} />
+          )}
+          {activeSubTab === 'shots' && (
+            <ShotsEditorSubTab state={state} dispatch={dispatch} onNotify={onNotify} />
+          )}
+        </div>
+      );
+    }
+
+    // Game Settings Sub-Tab
+    function GameSettingsSubTab({ state, dispatch, onNotify }) {
+      const { gameType, teamName, opponent, firstEndHammer, competition, compRound, gameDate, lineup, pendingLineup, pendingGameType, shots } = state;
+      
+      // Only show 4/3 Person options if current game is one of those (not Mixed Doubles)
+      const availableGameTypes = gameType === "Mixed Doubles" 
+        ? ["Mixed Doubles"] 
+        : ["4 Person", "3 Person"];
+      
+      // Use pending values if they exist
+      const displayGameType = pendingGameType || gameType;
+      const teams = displayGameType === "Mixed Doubles" ? MD_TEAMS : TEAMS;
+      const positions = POSITION_MAP[displayGameType].positions;
+      
+      const teamPlayers = useMemo(() => {
+        if (!teamName) return [];
+        return PLAYER_DATA.filter(p => 
+          displayGameType === "Mixed Doubles" ? p.mdTeam === teamName : p.team === teamName
+        ).map(p => p.name).sort();
+      }, [teamName, displayGameType]);
+
+      const hammerOptions = useMemo(() => {
+        const options = [];
+        if (teamName) options.push(teamName);
+        if (opponent) options.push(opponent);
+        return options;
+      }, [teamName, opponent]);
+
+      const hasPendingChanges = pendingLineup !== null || pendingGameType !== null;
+      const displayLineup = pendingLineup || lineup;
+
+      const handleGameTypeChange = (newType) => {
+        if (newType !== gameType) {
+          dispatch({ type: 'SET_GAME_TYPE', payload: newType });
+        }
+      };
+
+      const handleApplyChanges = () => {
+        dispatch({ type: 'APPLY_LINEUP_CHANGES' });
+        onNotify("Changes applied!", "success");
+      };
+
+      const handleCancelChanges = () => {
+        dispatch({ type: 'CANCEL_LINEUP_CHANGES' });
+        onNotify("Changes cancelled", "info");
+      };
+
+      return (
+        <div>
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>GAME TYPE</h2>
+            {hasPendingChanges && pendingGameType && (
+              <div style={{ 
+                background: 'var(--warning)', 
+                padding: '12px', 
+                borderRadius: 'var(--radius-sm)',
+                marginBottom: '16px',
+                color: 'var(--text)'
+              }}>
+                ⚠️ Game type change pending. Click "Apply Changes" to confirm or "Cancel" to revert.
+              </div>
+            )}
+            <div style={styles.radioGroup}>
+              {availableGameTypes.map(type => (
+                <button
+                  key={type}
+                  style={{
+                    ...styles.radioButton,
+                    ...(displayGameType === type ? styles.radioButtonActive : {}),
+                    ...(pendingGameType === type && type !== gameType 
+                      ? { borderColor: 'var(--warning)', borderWidth: '2px' } 
+                      : {})
+                  }}
+                  onClick={() => handleGameTypeChange(type)}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+            {gameType !== "Mixed Doubles" && (
+              <p style={{ fontSize: '12px', color: 'var(--text-light)', marginTop: '8px' }}>
+                Switch between 4 Person and 3 Person if team composition changes during game.
+              </p>
+            )}
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>TEAM LINEUP</h2>
+            {hasPendingChanges && !pendingGameType && (
+              <div style={{ 
+                background: 'var(--warning)', 
+                padding: '12px', 
+                borderRadius: 'var(--radius-sm)',
+                marginBottom: '16px',
+                color: 'var(--text)'
+              }}>
+                ⚠️ You have pending lineup changes. Click "Apply Changes" to confirm or "Cancel" to revert.
+              </div>
+            )}
+            <div style={{ ...styles.grid, ...styles.grid2 }}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Team</label>
+                <select
+                  style={{ ...styles.select, opacity: 0.7 }}
+                  value={teamName}
+                  disabled={true}
+                >
+                  <option value={teamName}>{teamName}</option>
+                </select>
+              </div>
+              
+              {positions.map(pos => (
+                <div key={pos} style={styles.formGroup}>
+                  <label style={styles.label}>{pos}</label>
+                  <select
+                    style={{
+                      ...styles.select,
+                      ...(hasPendingChanges && displayLineup[pos] !== lineup[pos] 
+                        ? { borderColor: 'var(--warning)', borderWidth: '2px' } 
+                        : {})
+                    }}
+                    value={displayLineup[pos] || ""}
+                    onChange={(e) => dispatch({ 
+                      type: 'SET_LINEUP', 
+                      payload: { position: pos, player: e.target.value } 
+                    })}
+                  >
+                    <option value="">Select Player...</option>
+                    {teamPlayers.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {hasPendingChanges && (
+              <div style={{ display: 'flex', gap: '12px', marginTop: '20px', justifyContent: 'center' }}>
+                <button
+                  style={{ ...styles.button, ...styles.buttonSuccess }}
+                  onClick={handleApplyChanges}
+                >
+                  Apply Changes
+                </button>
+                <button
+                  style={{ ...styles.button, ...styles.buttonOutline }}
+                  onClick={handleCancelChanges}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>GAME DETAILS</h2>
+            <div style={{ ...styles.grid, ...styles.grid2 }}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Opponent</label>
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={opponent}
+                  onChange={(e) => dispatch({ 
+                    type: 'SET_FIELD', 
+                    payload: { field: 'opponent', value: e.target.value } 
+                  })}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Hammer in 1st End</label>
+                <select
+                  style={{ ...styles.select, ...(shots.length > 0 ? { opacity: 0.6, cursor: 'not-allowed' } : {}) }}
+                  value={firstEndHammer}
+                  onChange={(e) => dispatch({ 
+                    type: 'SET_FIELD', 
+                    payload: { field: 'firstEndHammer', value: e.target.value } 
+                  })}
+                  disabled={shots.length > 0}
+                >
+                  <option value="">Select...</option>
+                  {hammerOptions.map(h => <option key={h} value={h}>{h}</option>)}
+                </select>
+                {shots.length > 0 && (
+                  <div style={{ fontSize: '11px', color: 'var(--text-light)', marginTop: '4px' }}>
+                    Cannot change after game started
+                  </div>
+                )}
+              </div>
+              
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Competition</label>
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={competition}
+                  onChange={(e) => dispatch({ 
+                    type: 'SET_FIELD', 
+                    payload: { field: 'competition', value: e.target.value } 
+                  })}
+                />
+              </div>
+              
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Round</label>
+                <select
+                  style={styles.select}
+                  value={compRound}
+                  onChange={(e) => dispatch({ 
+                    type: 'SET_FIELD', 
+                    payload: { field: 'compRound', value: e.target.value } 
+                  })}
+                >
+                  {COMP_ROUNDS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Date</label>
+                <input
+                  style={styles.input}
+                  type="date"
+                  value={gameDate}
+                  onChange={(e) => dispatch({ 
+                    type: 'SET_FIELD', 
+                    payload: { field: 'gameDate', value: e.target.value } 
+                  })}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Score Editor Sub-Tab
+    function ScoreEditorSubTab({ state, dispatch, onNotify }) {
+      const { shots, teamName, opponent, gameType } = state;
+      const maxShots = POSITION_MAP[gameType].maxShots;
+      
+      const [editEnd, setEditEnd] = useState(1);
+      const [editScore, setEditScore] = useState("");
+
+      // Get unique ends with scores
+      const endScores = useMemo(() => {
+        const scores = {};
+        shots.forEach(shot => {
+          if (shot.score && shot.shotNumber === maxShots) {
+            scores[shot.end] = shot.score;
+          }
+        });
+        return Object.entries(scores)
+          .map(([end, score]) => ({ end: parseInt(end), score }))
+          .sort((a, b) => a.end - b.end);
+      }, [shots, maxShots]);
+
+      const handleUpdateScore = () => {
+        if (!editScore.match(/^\d+-\d+$/)) {
+          onNotify("Score must be in format: number-number (e.g., 2-0)", "error");
+          return;
+        }
+        dispatch({ type: 'UPDATE_SCORE', payload: { end: editEnd, score: editScore } });
+        onNotify(`Score for End ${editEnd} updated!`, "success");
+        setEditScore("");
+      };
+
+      if (endScores.length === 0) {
+        return (
+          <div style={styles.card}>
+            <p style={{ textAlign: 'center', color: 'var(--text-light)' }}>
+              No completed ends yet. Scores will appear here after each end is finished.
+            </p>
+          </div>
+        );
+      }
+
+      return (
+        <div>
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>CURRENT SCORES</h2>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>End</th>
+                    <th style={styles.th}>{teamName}</th>
+                    <th style={styles.th}>{opponent}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {endScores.map(({ end, score }) => {
+                    const [teamScore, oppScore] = score.split('-');
+                    return (
+                      <tr key={end}>
+                        <td style={styles.td}>{end}</td>
+                        <td style={styles.td}>{teamScore}</td>
+                        <td style={styles.td}>{oppScore}</td>
+                      </tr>
+                    );
+                  })}
+                  <tr style={{ fontWeight: 'bold', background: 'var(--ice)' }}>
+                    <td style={styles.td}>Total</td>
+                    <td style={styles.td}>
+                      {endScores.reduce((sum, { score }) => sum + parseInt(score.split('-')[0]), 0)}
+                    </td>
+                    <td style={styles.td}>
+                      {endScores.reduce((sum, { score }) => sum + parseInt(score.split('-')[1]), 0)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>EDIT SCORE</h2>
+            <div style={{ ...styles.grid, gridTemplateColumns: '1fr 1fr auto' }}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>End</label>
+                <select
+                  style={styles.select}
+                  value={editEnd}
+                  onChange={(e) => setEditEnd(parseInt(e.target.value))}
+                >
+                  {endScores.map(({ end }) => (
+                    <option key={end} value={end}>End {end}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>New Score (e.g., 2-0)</label>
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={editScore}
+                  onChange={(e) => setEditScore(e.target.value)}
+                  placeholder="0-0"
+                />
+              </div>
+              <div style={{ ...styles.formGroup, justifyContent: 'flex-end' }}>
+                <button
+                  style={{ ...styles.button, ...styles.buttonPrimary }}
+                  onClick={handleUpdateScore}
+                >
+                  Update Score
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Shots Editor Sub-Tab
+    function ShotsEditorSubTab({ state, dispatch, onNotify }) {
+      const { shots, gameType } = state;
+      const [editingIndex, setEditingIndex] = useState(null);
+      const [editForm, setEditForm] = useState({});
+      const [selectedEnd, setSelectedEnd] = useState("all");
+
+      if (shots.length === 0) {
+        return (
+          <div style={styles.card}>
+            <p style={{ textAlign: 'center', color: 'var(--text-light)' }}>
+              No shots recorded yet.
+            </p>
+          </div>
+        );
+      }
+
+      // Get unique ends from shots
+      const uniqueEnds = [...new Set(shots.map(s => s.end))].sort((a, b) => a - b);
+
+      // Filter shots by selected end
+      const filteredShots = selectedEnd === "all" 
+        ? shots 
+        : shots.filter(s => s.end === parseInt(selectedEnd));
+
+      // Get the actual index in the full shots array for a filtered shot
+      const getActualIndex = (filteredIndex) => {
+        const shot = filteredShots[filteredIndex];
+        return shots.findIndex(s => 
+          s.end === shot.end && 
+          s.shotNumber === shot.shotNumber && 
+          s.name === shot.name
+        );
+      };
+
+      const startEditing = (filteredIndex) => {
+        const actualIndex = getActualIndex(filteredIndex);
+        setEditingIndex(actualIndex);
+        setEditForm({ ...shots[actualIndex] });
+      };
+
+      const cancelEditing = () => {
+        setEditingIndex(null);
+        setEditForm({});
+      };
+
+      const saveEdit = () => {
+        dispatch({ type: 'UPDATE_SHOT', payload: { index: editingIndex, updates: editForm } });
+        onNotify("Shot updated!", "success");
+        setEditingIndex(null);
+        setEditForm({});
+      };
+
+      const cellStyle = {
+        ...styles.td,
+        padding: '8px',
+        fontSize: '13px',
+        whiteSpace: 'nowrap'
+      };
+
+      const commentCellStyle = {
+        ...styles.td,
+        padding: '8px',
+        fontSize: '13px',
+        maxWidth: '150px',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      };
+
+      const inputCellStyle = {
+        padding: '4px',
+        border: '1px solid var(--ice-dark)',
+        borderRadius: '4px',
+        fontSize: '12px',
+        width: '100%',
+        minWidth: '60px'
+      };
+
+      return (
+        <div style={styles.card}>
+          <h2 style={styles.cardTitle}>SHOT LOG</h2>
+          
+          {/* End Filter */}
+          <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <label style={{ ...styles.label, marginBottom: 0 }}>Filter by End:</label>
+            <select
+              style={{ ...styles.select, width: 'auto', minWidth: '120px' }}
+              value={selectedEnd}
+              onChange={(e) => setSelectedEnd(e.target.value)}
+            >
+              <option value="all">All Ends</option>
+              {uniqueEnds.map(end => (
+                <option key={end} value={end}>End {end}</option>
+              ))}
+            </select>
+            <span style={{ fontSize: '13px', color: 'var(--text-light)' }}>
+              Showing {filteredShots.length} shot{filteredShots.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ ...styles.table, fontSize: '13px' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...styles.th, padding: '8px' }}>End</th>
+                  <th style={{ ...styles.th, padding: '8px' }}>Shot</th>
+                  <th style={{ ...styles.th, padding: '8px' }}>Athlete</th>
+                  <th style={{ ...styles.th, padding: '8px' }}>Position</th>
+                  <th style={{ ...styles.th, padding: '8px' }}>Turn</th>
+                  <th style={{ ...styles.th, padding: '8px' }}>Shot Type</th>
+                  <th style={{ ...styles.th, padding: '8px' }}>Outcome</th>
+                  <th style={{ ...styles.th, padding: '8px' }}>Miss</th>
+                  <th style={{ ...styles.th, padding: '8px' }}>Weight</th>
+                  <th style={{ ...styles.th, padding: '8px' }}>Key</th>
+                  <th style={{ ...styles.th, padding: '8px' }}>Comments</th>
+                  <th style={{ ...styles.th, padding: '8px' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredShots.map((shot, filteredIndex) => {
+                  const actualIndex = getActualIndex(filteredIndex);
+                  const isEditing = editingIndex === actualIndex;
+                  
+                  return (
+                    <tr key={`${shot.end}-${shot.shotNumber}`} style={{ background: filteredIndex % 2 === 0 ? 'white' : 'var(--ice)' }}>
+                      {isEditing ? (
+                        <>
+                          <td style={cellStyle}>{shot.end}</td>
+                          <td style={cellStyle}>{shot.shotNumber}</td>
+                          <td style={cellStyle}>{shot.name}</td>
+                          <td style={cellStyle}>{shot.position}</td>
+                          <td style={cellStyle}>
+                            <select
+                              style={inputCellStyle}
+                              value={editForm.turn}
+                              onChange={(e) => setEditForm({ ...editForm, turn: e.target.value })}
+                            >
+                              <option value="In-Turn">In-Turn</option>
+                              <option value="Out-Turn">Out-Turn</option>
+                            </select>
+                          </td>
+                          <td style={cellStyle}>
+                            <select
+                              style={inputCellStyle}
+                              value={editForm.shotType}
+                              onChange={(e) => setEditForm({ ...editForm, shotType: e.target.value })}
+                            >
+                              {SHOT_TYPES.map(st => <option key={st} value={st}>{st}</option>)}
+                            </select>
+                          </td>
+                          <td style={cellStyle}>
+                            <select
+                              style={inputCellStyle}
+                              value={editForm.outcome === null ? "" : editForm.outcome}
+                              onChange={(e) => setEditForm({ ...editForm, outcome: e.target.value === "" ? null : parseInt(e.target.value) })}
+                            >
+                              <option value="">---</option>
+                              <option value="0">0</option>
+                              <option value="1">1</option>
+                              <option value="2">2</option>
+                              <option value="3">3</option>
+                              <option value="4">4</option>
+                            </select>
+                          </td>
+                          <td style={cellStyle}>
+                            <select
+                              style={inputCellStyle}
+                              value={editForm.miss}
+                              onChange={(e) => setEditForm({ ...editForm, miss: e.target.value })}
+                            >
+                              <option value="">---</option>
+                              {MISS_TYPES.map(mt => <option key={mt} value={mt}>{mt}</option>)}
+                            </select>
+                          </td>
+                          <td style={cellStyle}>
+                            <select
+                              style={inputCellStyle}
+                              value={editForm.weight}
+                              onChange={(e) => setEditForm({ ...editForm, weight: e.target.value })}
+                            >
+                              {SHOT_WEIGHTS.map(sw => <option key={sw} value={sw}>{sw}</option>)}
+                            </select>
+                          </td>
+                          <td style={cellStyle}>
+                            <select
+                              style={inputCellStyle}
+                              value={editForm.keyShot}
+                              onChange={(e) => setEditForm({ ...editForm, keyShot: e.target.value })}
+                            >
+                              <option value="No">No</option>
+                              <option value="Yes">Yes</option>
+                            </select>
+                          </td>
+                          <td style={cellStyle}>
+                            <input
+                              style={{ ...inputCellStyle, minWidth: '100px' }}
+                              type="text"
+                              value={editForm.comments || ""}
+                              onChange={(e) => setEditForm({ ...editForm, comments: e.target.value })}
+                              placeholder="Comments..."
+                            />
+                          </td>
+                          <td style={cellStyle}>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                style={{ 
+                                  padding: '4px 8px', 
+                                  fontSize: '11px', 
+                                  background: 'var(--success)', 
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={saveEdit}
+                              >
+                                Save
+                              </button>
+                              <button
+                                style={{ 
+                                  padding: '4px 8px', 
+                                  fontSize: '11px', 
+                                  background: 'var(--text-light)', 
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={cancelEditing}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={cellStyle}>{shot.end}</td>
+                          <td style={cellStyle}>{shot.shotNumber}</td>
+                          <td style={cellStyle}>{shot.name}</td>
+                          <td style={cellStyle}>{shot.position}</td>
+                          <td style={cellStyle}>{shot.turn}</td>
+                          <td style={cellStyle}>{shot.shotType}</td>
+                          <td style={cellStyle}>{shot.outcome === null ? '---' : shot.outcome}</td>
+                          <td style={cellStyle}>{shot.miss || '---'}</td>
+                          <td style={cellStyle}>{shot.weight}</td>
+                          <td style={cellStyle}>{shot.keyShot}</td>
+                          <td style={commentCellStyle} title={shot.comments || ''}>
+                            {shot.comments || '---'}
+                          </td>
+                          <td style={cellStyle}>
+                            <button
+                              style={{ 
+                                padding: '4px 12px', 
+                                fontSize: '11px', 
+                                background: 'var(--accent)', 
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => startEditing(filteredIndex)}
+                            >
+                              Edit
+                            </button>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // Tracking Panel Component
+    function TrackingPanel({ state, dispatch, onNotify }) {
+      const { gameType, teamName, opponent, currentEnd, currentShot, currentHammer, 
+              lastIceCondition, lineup, shots } = state;
+      
+      const maxShots = POSITION_MAP[gameType].maxShots;
+      
+      // Track the current end for power play reset
+      const [lastTrackedEnd, setLastTrackedEnd] = useState(currentEnd);
+      
+      // Shot form state
+      const [shotForm, setShotForm] = useState({
+        iceCondition: lastIceCondition,
+        turn: "In-Turn",
+        shotType: "Draw",
+        outcome: "",
+        miss: "",
+        weight: "Draw",
+        keyShot: "No",
+        powerPlay: "No",
+        comments: "",
+        teamScore: 0,
+        oppScore: 0
+      });
+      
+      // Reset powerPlay to "No" when end changes
+      React.useEffect(() => {
+        if (currentEnd !== lastTrackedEnd) {
+          setShotForm(prev => ({ ...prev, powerPlay: "No" }));
+          setLastTrackedEnd(currentEnd);
+        }
+      }, [currentEnd, lastTrackedEnd]);
+      
+      const [showEndGame, setShowEndGame] = useState(false);
+
+      // Auto-calculate current position based on shot number
+      const currentPosition = useMemo(() => {
+        if (gameType === "4 Person") {
+          if (currentShot <= 2) return "Lead";
+          else if (currentShot <= 4) return "Second";
+          else if (currentShot <= 6) return "Third";
+          else return "Fourth";
+        } else if (gameType === "3 Person") {
+          if (currentShot <= 3) return "Lead";
+          else if (currentShot <= 6) return "Second";
+          else return "Third";
+        } else {
+          return (currentShot === 1 || currentShot === 5) ? "First/Last" : "Middle";
+        }
+      }, [currentShot, gameType]);
+
+      const handleLogShot = () => {
+        // Validate outcome (required unless shot type is Throw Through or miss is Burnt)
+        if (shotForm.outcome === "" && shotForm.shotType !== "Throw Through" && shotForm.miss !== "Burnt") {
+          onNotify("Please select an outcome before logging the shot", "error");
+          return;
+        }
+
+        const playerName = lineup[currentPosition];
+        const player = PLAYER_DATA.find(p => p.name === playerName);
+        
+        const score = currentShot === maxShots 
+          ? `${shotForm.teamScore}-${shotForm.oppScore}` 
+          : null;
+
+        dispatch({
+          type: 'LOG_SHOT',
+          payload: {
+            name: playerName,
+            date: state.gameDate,
+            opponent,
+            competition: state.competition,
+            compRound: state.compRound,
+            iceCondition: shotForm.iceCondition,
+            end: currentEnd,
+            hammer: currentHammer,
+            powerPlay: gameType === "Mixed Doubles" ? shotForm.powerPlay : null,
+            shotNumber: currentShot,
+            position: currentPosition,
+            turn: shotForm.turn,
+            shotType: shotForm.shotType,
+            outcome: shotForm.outcome === "" ? null : parseInt(shotForm.outcome),
+            miss: shotForm.miss,
+            weight: shotForm.weight,
+            keyShot: shotForm.keyShot,
+            score,
+            comments: shotForm.comments,
+            userId: player?.userId
+          }
+        });
+
+        // Reset form (keyShot always resets to "No")
+        setShotForm(prev => ({
+          ...prev,
+          outcome: "",
+          miss: "",
+          keyShot: "No",
+          comments: "",
+          teamScore: 0,
+          oppScore: 0
+        }));
+        
+        onNotify("Shot logged!", "success");
+      };
+
+      const handleUndo = () => {
+        if (shots.length === 0) {
+          onNotify("No shots to undo", "error");
+          return;
+        }
+        
+        // Get the last shot to restore its values
+        const lastShot = shots[shots.length - 1];
+        
+        // Restore form values from the last shot
+        setShotForm({
+          iceCondition: lastShot.iceCondition,
+          turn: lastShot.turn,
+          shotType: lastShot.shotType,
+          outcome: lastShot.outcome === null ? "" : String(lastShot.outcome),
+          miss: lastShot.miss || "",
+          weight: lastShot.weight,
+          keyShot: lastShot.keyShot,
+          powerPlay: lastShot.powerPlay || "No",
+          comments: lastShot.comments || "",
+          teamScore: lastShot.score ? parseInt(lastShot.score.split('-')[0]) : 0,
+          oppScore: lastShot.score ? parseInt(lastShot.score.split('-')[1]) : 0
+        });
+        
+        dispatch({ type: 'UNDO_SHOT' });
+        onNotify("Last shot removed", "info");
+      };
+
+      const handleEndGame = () => {
+        dispatch({ type: 'END_GAME' });
+        setShowEndGame(false);
+      };
+
+      const isLastShot = currentShot === maxShots;
+
+      return (
+        <div>
+          {/* Shot Counter */}
+          <div style={styles.shotCounter}>
+            <div style={styles.shotCounterText}>
+              END {currentEnd} • SHOT {currentShot} OF {maxShots}
+            </div>
+            <div style={styles.hammerBadge}>
+              🔨 {currentHammer}
+            </div>
+          </div>
+
+          {/* Shot Form */}
+          <div style={styles.card}>
+            <div style={{ ...styles.grid, ...styles.grid4 }}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Ice Conditions</label>
+                <select
+                  style={styles.select}
+                  value={shotForm.iceCondition}
+                  onChange={(e) => setShotForm(prev => ({ ...prev, iceCondition: e.target.value }))}
+                >
+                  {ICE_CONDITIONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Turn</label>
+                <select
+                  style={styles.select}
+                  value={shotForm.turn}
+                  onChange={(e) => setShotForm(prev => ({ ...prev, turn: e.target.value }))}
+                >
+                  <option value="In-Turn">In-Turn</option>
+                  <option value="Out-Turn">Out-Turn</option>
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Shot Type</label>
+                <select
+                  style={styles.select}
+                  value={shotForm.shotType}
+                  onChange={(e) => setShotForm(prev => ({ ...prev, shotType: e.target.value }))}
+                >
+                  {SHOT_TYPES.map(st => <option key={st} value={st}>{st}</option>)}
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Outcome</label>
+                <select
+                  style={styles.select}
+                  value={shotForm.outcome}
+                  onChange={(e) => setShotForm(prev => ({ ...prev, outcome: e.target.value }))}
+                >
+                  <option value="">---</option>
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Miss</label>
+                <select
+                  style={styles.select}
+                  value={shotForm.miss}
+                  onChange={(e) => setShotForm(prev => ({ ...prev, miss: e.target.value }))}
+                >
+                  <option value="">---</option>
+                  {MISS_TYPES.map(mt => <option key={mt} value={mt}>{mt}</option>)}
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Shot Weight</label>
+                <select
+                  style={styles.select}
+                  value={shotForm.weight}
+                  onChange={(e) => setShotForm(prev => ({ ...prev, weight: e.target.value }))}
+                >
+                  {SHOT_WEIGHTS.map(sw => <option key={sw} value={sw}>{sw}</option>)}
+                </select>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Key Shot</label>
+                <select
+                  style={styles.select}
+                  value={shotForm.keyShot}
+                  onChange={(e) => setShotForm(prev => ({ ...prev, keyShot: e.target.value }))}
+                >
+                  <option value="No">No</option>
+                  <option value="Yes">Yes</option>
+                </select>
+              </div>
+            </div>
+
+            {gameType === "Mixed Doubles" ? (
+              <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'minmax(140px, auto) 1fr', gap: '16px' }}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Power Play</label>
+                  <select
+                    style={styles.select}
+                    value={shotForm.powerPlay}
+                    onChange={(e) => setShotForm(prev => ({ ...prev, powerPlay: e.target.value }))}
+                  >
+                    <option value="No">No</option>
+                    <option value="Yes">Yes</option>
+                  </select>
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Comments</label>
+                  <textarea
+                    style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
+                    value={shotForm.comments}
+                    onChange={(e) => setShotForm(prev => ({ ...prev, comments: e.target.value }))}
+                    placeholder="Optional notes about this shot..."
+                  />
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: '16px' }}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Comments</label>
+                  <textarea
+                    style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
+                    value={shotForm.comments}
+                    onChange={(e) => setShotForm(prev => ({ ...prev, comments: e.target.value }))}
+                    placeholder="Optional notes about this shot..."
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Score inputs for last shot */}
+            {isLastShot && (
+              <div style={styles.scoreInputs}>
+                <h4 style={{ marginBottom: '16px', color: 'var(--secondary)' }}>End Score</h4>
+                <div style={{ ...styles.grid, gridTemplateColumns: '1fr 1fr' }}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>{teamName}</label>
+                    <input
+                      style={styles.input}
+                      type="number"
+                      min="0"
+                      value={shotForm.teamScore}
+                      onChange={(e) => setShotForm(prev => ({ ...prev, teamScore: parseInt(e.target.value) || 0 }))}
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>{opponent}</label>
+                    <input
+                      style={styles.input}
+                      type="number"
+                      min="0"
+                      value={shotForm.oppScore}
+                      onChange={(e) => setShotForm(prev => ({ ...prev, oppScore: parseInt(e.target.value) || 0 }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div style={{ 
+              display: 'flex', 
+              gap: '12px', 
+              marginTop: '24px',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap'
+            }}>
+              <button
+                style={{ ...styles.button, ...styles.buttonWarning }}
+                onClick={handleUndo}
+              >
+                ← Back
+              </button>
+              <button
+                style={{ ...styles.button, ...styles.buttonSuccess, padding: '14px 48px' }}
+                onClick={handleLogShot}
+              >
+                Log Shot ✓
+              </button>
+              <button
+                style={{ ...styles.button, ...styles.buttonPrimary }}
+                onClick={() => setShowEndGame(true)}
+              >
+                End Game
+              </button>
+            </div>
+          </div>
+
+          {/* Current Player Display */}
+          <div style={{ 
+            ...styles.card, 
+            background: 'linear-gradient(135deg, var(--accent) 0%, var(--secondary) 100%)',
+            color: 'white',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '14px', opacity: 0.8, marginBottom: '4px' }}>
+              Current Thrower
+            </div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '32px', letterSpacing: '1px' }}>
+              {lineup[currentPosition] || "—"}
+            </div>
+            <div style={{ fontSize: '14px', marginTop: '4px' }}>
+              {currentPosition}
+            </div>
+          </div>
+
+          {showEndGame && (
+            <ConfirmModal
+              title="End Game?"
+              message="You can still view analytics and export data after ending."
+              onConfirm={handleEndGame}
+              onCancel={() => setShowEndGame(false)}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // Analytics Panel Component
+    function AnalyticsPanel({ state, dispatch, onNotify }) {
+      const { shots, teamName, opponent, gameType, totalEnds, competition, compRound, gameDate, lineup, gameEnded, firstEndHammer } = state;
+      const [showNewGame, setShowNewGame] = useState(false);
+      const maxShots = POSITION_MAP[gameType].maxShots;
+
+      // Categorize shot types
+      const DRAW_SHOTS = ["Draw", "Tap", "Center Guard", "Corner Guard", "Freeze", "Trick Shot"];
+      const isDrawShot = (shotType) => DRAW_SHOTS.includes(shotType);
+      const isThrowThrough = (shotType) => shotType === "Throw Through";
+
+      // Calculate statistics
+      const stats = useMemo(() => {
+        if (shots.length === 0) return null;
+
+        // Score by end (separate regular ends from extra ends)
+        const allEndScores = shots
+          .filter(s => s.score)
+          .map(s => ({
+            end: s.end,
+            teamScore: parseInt(s.score.split('-')[0]),
+            oppScore: parseInt(s.score.split('-')[1])
+          }));
+
+        // Regular ends (1 through totalEnds)
+        const endScores = allEndScores.filter(e => e.end <= totalEnds);
+        
+        // Extra end (any end > totalEnds)
+        const extraEndData = allEndScores.find(e => e.end > totalEnds);
+        const extraEndTeamScore = extraEndData ? extraEndData.teamScore : undefined;
+        const extraEndOppScore = extraEndData ? extraEndData.oppScore : undefined;
+
+        const totalTeamScore = allEndScores.reduce((sum, e) => sum + e.teamScore, 0);
+        const totalOppScore = allEndScores.reduce((sum, e) => sum + e.oppScore, 0);
+
+        // Shooting percentage by end (exclude Throw Through)
+        const endPcts = {};
+        shots.forEach(s => {
+          if (s.outcome !== null && !isThrowThrough(s.shotType)) {
+            if (!endPcts[s.end]) endPcts[s.end] = [];
+            endPcts[s.end].push(s.outcome * 25);
+          }
+        });
+        const endPercentages = Object.entries(endPcts).map(([end, pcts]) => ({
+          end: parseInt(end),
+          pct: pcts.length ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : 0
+        })).sort((a, b) => a.end - b.end);
+
+        // Player statistics with In-Turn/Out-Turn breakdown (exclude Throw Through)
+        const playerStats = {};
+        shots.forEach(s => {
+          if (s.outcome === null || isThrowThrough(s.shotType)) return; // Skip shots with no outcome or Throw Through
+          
+          if (!playerStats[s.name]) {
+            playerStats[s.name] = { 
+              position: s.position,
+              draws: { inTurn: [], outTurn: [] }, 
+              takeouts: { inTurn: [], outTurn: [] },
+              all: []
+            };
+          }
+          const pct = s.outcome * 25;
+          playerStats[s.name].all.push(pct);
+          
+          const turnKey = s.turn === "In-Turn" ? "inTurn" : "outTurn";
+          if (isDrawShot(s.shotType)) {
+            playerStats[s.name].draws[turnKey].push(pct);
+          } else {
+            playerStats[s.name].takeouts[turnKey].push(pct);
+          }
+        });
+
+        // Build player table in Shot Success Analysis format
+        const playerTable = Object.entries(playerStats).map(([name, data]) => {
+          const drawsInTurn = data.draws.inTurn;
+          const drawsOutTurn = data.draws.outTurn;
+          const drawsTotal = [...drawsInTurn, ...drawsOutTurn];
+          const takeoutsInTurn = data.takeouts.inTurn;
+          const takeoutsOutTurn = data.takeouts.outTurn;
+          const takeoutsTotal = [...takeoutsInTurn, ...takeoutsOutTurn];
+          
+          return {
+            name,
+            position: data.position,
+            draws: {
+              inTurnCount: drawsInTurn.length,
+              inTurnPct: drawsInTurn.length ? Math.round(drawsInTurn.reduce((a, b) => a + b, 0) / drawsInTurn.length) : null,
+              outTurnCount: drawsOutTurn.length,
+              outTurnPct: drawsOutTurn.length ? Math.round(drawsOutTurn.reduce((a, b) => a + b, 0) / drawsOutTurn.length) : null,
+              totalCount: drawsTotal.length,
+              totalPct: drawsTotal.length ? Math.round(drawsTotal.reduce((a, b) => a + b, 0) / drawsTotal.length) : null
+            },
+            takeouts: {
+              inTurnCount: takeoutsInTurn.length,
+              inTurnPct: takeoutsInTurn.length ? Math.round(takeoutsInTurn.reduce((a, b) => a + b, 0) / takeoutsInTurn.length) : null,
+              outTurnCount: takeoutsOutTurn.length,
+              outTurnPct: takeoutsOutTurn.length ? Math.round(takeoutsOutTurn.reduce((a, b) => a + b, 0) / takeoutsOutTurn.length) : null,
+              totalCount: takeoutsTotal.length,
+              totalPct: takeoutsTotal.length ? Math.round(takeoutsTotal.reduce((a, b) => a + b, 0) / takeoutsTotal.length) : null
+            },
+            total: {
+              count: data.all.length,
+              pct: data.all.length ? Math.round(data.all.reduce((a, b) => a + b, 0) / data.all.length) : null
+            }
+          };
+        });
+
+        // Calculate team totals (exclude Throw Through)
+        const teamTotals = {
+          draws: { inTurn: [], outTurn: [] },
+          takeouts: { inTurn: [], outTurn: [] },
+          all: []
+        };
+        shots.forEach(s => {
+          if (s.outcome === null || isThrowThrough(s.shotType)) return;
+          const pct = s.outcome * 25;
+          teamTotals.all.push(pct);
+          const turnKey = s.turn === "In-Turn" ? "inTurn" : "outTurn";
+          if (isDrawShot(s.shotType)) {
+            teamTotals.draws[turnKey].push(pct);
+          } else {
+            teamTotals.takeouts[turnKey].push(pct);
+          }
+        });
+
+        const teamRow = {
+          name: "Team Total",
+          position: "",
+          draws: {
+            inTurnCount: teamTotals.draws.inTurn.length,
+            inTurnPct: teamTotals.draws.inTurn.length ? Math.round(teamTotals.draws.inTurn.reduce((a, b) => a + b, 0) / teamTotals.draws.inTurn.length) : null,
+            outTurnCount: teamTotals.draws.outTurn.length,
+            outTurnPct: teamTotals.draws.outTurn.length ? Math.round(teamTotals.draws.outTurn.reduce((a, b) => a + b, 0) / teamTotals.draws.outTurn.length) : null,
+            totalCount: [...teamTotals.draws.inTurn, ...teamTotals.draws.outTurn].length,
+            totalPct: [...teamTotals.draws.inTurn, ...teamTotals.draws.outTurn].length ? Math.round([...teamTotals.draws.inTurn, ...teamTotals.draws.outTurn].reduce((a, b) => a + b, 0) / [...teamTotals.draws.inTurn, ...teamTotals.draws.outTurn].length) : null
+          },
+          takeouts: {
+            inTurnCount: teamTotals.takeouts.inTurn.length,
+            inTurnPct: teamTotals.takeouts.inTurn.length ? Math.round(teamTotals.takeouts.inTurn.reduce((a, b) => a + b, 0) / teamTotals.takeouts.inTurn.length) : null,
+            outTurnCount: teamTotals.takeouts.outTurn.length,
+            outTurnPct: teamTotals.takeouts.outTurn.length ? Math.round(teamTotals.takeouts.outTurn.reduce((a, b) => a + b, 0) / teamTotals.takeouts.outTurn.length) : null,
+            totalCount: [...teamTotals.takeouts.inTurn, ...teamTotals.takeouts.outTurn].length,
+            totalPct: [...teamTotals.takeouts.inTurn, ...teamTotals.takeouts.outTurn].length ? Math.round([...teamTotals.takeouts.inTurn, ...teamTotals.takeouts.outTurn].reduce((a, b) => a + b, 0) / [...teamTotals.takeouts.inTurn, ...teamTotals.takeouts.outTurn].length) : null
+          },
+          total: {
+            count: teamTotals.all.length,
+            pct: teamTotals.all.length ? Math.round(teamTotals.all.reduce((a, b) => a + b, 0) / teamTotals.all.length) : null
+          }
+        };
+
+        // Miss analysis by shot type (Draw vs Takeout) - exclude Throw Through
+        const missMatrixDraws = {};
+        const missMatrixTakeouts = {};
+        shots.filter(s => s.miss && !isThrowThrough(s.shotType)).forEach(s => {
+          const matrix = isDrawShot(s.shotType) ? missMatrixDraws : missMatrixTakeouts;
+          if (!matrix[s.miss]) matrix[s.miss] = 0;
+          matrix[s.miss]++;
+        });
+
+        const overallPct = teamTotals.all.length ? Math.round(teamTotals.all.reduce((sum, p) => sum + p, 0) / teamTotals.all.length) : 0;
+
+        // Game outcome
+        const gameOutcome = totalTeamScore > totalOppScore ? "Win" : "Loss";
+
+        return {
+          endScores,
+          extraEndTeamScore,
+          extraEndOppScore,
+          totalTeamScore,
+          totalOppScore,
+          endPercentages,
+          playerTable,
+          teamRow,
+          missMatrixDraws,
+          missMatrixTakeouts,
+          overallPct,
+          totalShots: shots.length,
+          gameOutcome
+        };
+      }, [shots, totalEnds]);
+
+      // Calculate ScoreDiff and EndOutcome for CSV export
+      const getScoreDiff = (end) => {
+        let teamTotal = 0;
+        let oppTotal = 0;
+        const endScores = shots
+          .filter(s => s.score && s.end < end)
+          .map(s => ({ end: s.end, score: s.score }));
+        
+        endScores.forEach(e => {
+          const [ts, os] = e.score.split('-').map(Number);
+          teamTotal += ts;
+          oppTotal += os;
+        });
+        return teamTotal - oppTotal;
+      };
+
+      const getEndOutcome = (end) => {
+        const endShot = shots.find(s => s.end === end && s.shotNumber === maxShots);
+        
+        // Check if this is an incomplete end (game ended mid-end)
+        if (!endShot || !endShot.score) {
+          // Check if there are any shots in this end but it wasn't completed
+          const shotsInEnd = shots.filter(s => s.end === end);
+          if (shotsInEnd.length > 0 && gameEnded) {
+            return "Conceded";
+          }
+          return "";
+        }
+        
+        const [teamScore, oppScore] = endShot.score.split('-').map(Number);
+        const hadHammer = endShot.hammer === teamName;
+        
+        // Blank end (0-0)
+        if (teamScore === 0 && oppScore === 0) return "Blank";
+        
+        if (hadHammer) {
+          // Team had hammer
+          if (teamScore === 1) return "Got Forced";
+          if (teamScore >= 2) return `Scored ${teamScore}`;
+          if (oppScore >= 1) return `Allowed a Steal of ${oppScore}`;
+        } else {
+          // Opponent had hammer
+          if (oppScore === 1) return "Forced";
+          if (oppScore >= 2) return `Gave Up ${oppScore}`;
+          if (teamScore >= 1) return `Stole ${teamScore}`;
+        }
+        return "";
+      };
+
+      const exportCSV = () => {
+        // Format date as DD/MM/YYYY
+        const formatDate = (dateStr) => {
+          const [year, month, day] = dateStr.split('-');
+          return `${day}/${month}/${year}`;
+        };
+
+        // Pre-calculate EndOutcome for each end
+        const endOutcomes = {};
+        const uniqueEnds = [...new Set(shots.map(s => s.end))];
+        uniqueEnds.forEach(end => {
+          endOutcomes[end] = getEndOutcome(end);
+        });
+
+        // Determine if this is a Mixed Doubles game
+        const isMixedDoubles = gameType === "Mixed Doubles";
+
+        const csvData = shots.map(s => ({
+          Name: s.name,
+          'User ID': s.userId || '',
+          Date: formatDate(s.date),
+          Opponent: s.opponent,
+          Competition: isMixedDoubles ? '' : s.competition,
+          'MD Competition': isMixedDoubles ? s.competition : '',
+          Round: s.compRound,
+          'Ice Conditions': s.iceCondition,
+          End: s.end,
+          'Power Play': s.powerPlay || '',
+          Hammer: s.hammer,
+          'Shot Number': s.shotNumber,
+          Position: s.position,
+          Turn: s.turn,
+          'Shot Type': s.shotType,
+          Outcome: s.outcome === null ? '' : s.outcome,
+          Miss: s.miss || '',
+          'Shot Weight': s.weight,
+          'Key Shot': s.keyShot,
+          Comments: s.comments || '',
+          ScoreDiff: getScoreDiff(s.end),
+          EndOutcome: endOutcomes[s.end] || '',
+          GameOutcome: stats ? stats.gameOutcome : ''
+        }));
+
+        const csv = Papa.unparse(csvData);
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `curling_shots_${gameDate.split('-').reverse().join('-')}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        onNotify("CSV exported!", "success");
+      };
+
+      const exportPDF = () => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        // Colors
+        const primaryColor = [196, 30, 58]; // #c41e3a
+        const secondaryColor = [26, 26, 46]; // #1a1a2e
+        const textLight = [107, 114, 128]; // #6b7280
+        
+        let yPos = 20;
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 15;
+        const contentWidth = pageWidth - (margin * 2);
+        const maxY = pageHeight - 15; // Leave 15mm bottom margin
+        
+        // Helper function to check if we need a new page and move to it if so
+        const ensureSpace = (requiredSpace) => {
+          if (yPos + requiredSpace > maxY) {
+            doc.addPage();
+            yPos = 20;
+            return true;
+          }
+          return false;
+        };
+        
+        // Title
+        doc.setFontSize(24);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...secondaryColor);
+        doc.text('USA CURLING SHOT TRACKER', pageWidth / 2, yPos, { align: 'center' });
+        yPos += 12;
+        
+        // Game Summary Header
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...textLight);
+        doc.text(`${teamName} vs ${opponent}`, pageWidth / 2, yPos, { align: 'center' });
+        yPos += 8;
+        doc.setFontSize(10);
+        doc.text(`${competition} • ${compRound} • ${gameDate}`, pageWidth / 2, yPos, { align: 'center' });
+        yPos += 15;
+        
+        // Score Display
+        doc.setFontSize(36);
+        doc.setFont('helvetica', 'bold');
+        const teamScoreColor = stats.totalTeamScore > stats.totalOppScore ? [45, 106, 79] : secondaryColor;
+        const oppScoreColor = stats.totalOppScore > stats.totalTeamScore ? [45, 106, 79] : secondaryColor;
+        doc.setTextColor(...teamScoreColor);
+        doc.text(String(stats.totalTeamScore), pageWidth / 2 - 25, yPos, { align: 'center' });
+        doc.setTextColor(...secondaryColor);
+        doc.text('-', pageWidth / 2, yPos, { align: 'center' });
+        doc.setTextColor(...oppScoreColor);
+        doc.text(String(stats.totalOppScore), pageWidth / 2 + 25, yPos, { align: 'center' });
+        yPos += 10;
+        
+        // Team names under scores
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...textLight);
+        doc.text(teamName, pageWidth / 2 - 25, yPos, { align: 'center' });
+        doc.text(opponent, pageWidth / 2 + 25, yPos, { align: 'center' });
+        yPos += 15;
+        
+        // Team Shooting %
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...secondaryColor);
+        doc.text('TEAM SHOOTING %', margin, yPos);
+        yPos += 8;
+        doc.setFontSize(24);
+        doc.setTextColor(...primaryColor);
+        doc.text(`${stats.overallPct}%`, margin, yPos);
+        yPos += 15;
+        
+        // Score by End Table - calculate total height needed
+        const scoreByEndHeight = 30; // header + 2 rows + padding
+        ensureSpace(scoreByEndHeight);
+        
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...secondaryColor);
+        doc.text('SCORE BY END', margin, yPos);
+        yPos += 8;
+        
+        // Table headers
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        const endCols = totalEnds + 3; // Team, Hammer, ends, EE
+        const colWidth = contentWidth / endCols;
+        
+        doc.setFillColor(240, 240, 240);
+        doc.rect(margin, yPos - 4, contentWidth, 8, 'F');
+        
+        let xPos = margin;
+        doc.text('Team', xPos + 2, yPos);
+        xPos += colWidth * 1.5;
+        doc.text('H', xPos + 2, yPos);
+        xPos += colWidth * 0.5;
+        for (let i = 1; i <= totalEnds; i++) {
+          doc.text(String(i), xPos + colWidth/2, yPos, { align: 'center' });
+          xPos += colWidth * 0.7;
+        }
+        doc.text('EE', xPos + colWidth/2, yPos, { align: 'center' });
+        yPos += 8;
+        
+        // Team row
+        doc.setFont('helvetica', 'normal');
+        xPos = margin;
+        doc.text(teamName.substring(0, 12), xPos + 2, yPos);
+        xPos += colWidth * 1.5;
+        doc.text(firstHammerTeam === teamName ? '*' : '', xPos + 2, yPos);
+        xPos += colWidth * 0.5;
+        for (let i = 1; i <= totalEnds; i++) {
+          const endData = stats.endScores.find(e => e.end === i);
+          const maxPlayedEnd = Math.max(...stats.endScores.map(e => e.end), 0);
+          let val = '';
+          if (endData) val = String(endData.teamScore);
+          else if (gameEnded && i > maxPlayedEnd) val = 'X';
+          doc.text(val, xPos + colWidth/2, yPos, { align: 'center' });
+          xPos += colWidth * 0.7;
+        }
+        doc.text(stats.extraEndTeamScore !== undefined ? String(stats.extraEndTeamScore) : '', xPos + colWidth/2, yPos, { align: 'center' });
+        yPos += 6;
+        
+        // Opponent row
+        xPos = margin;
+        doc.text(opponent.substring(0, 12), xPos + 2, yPos);
+        xPos += colWidth * 1.5;
+        doc.text(firstHammerTeam === opponent ? '*' : '', xPos + 2, yPos);
+        xPos += colWidth * 0.5;
+        for (let i = 1; i <= totalEnds; i++) {
+          const endData = stats.endScores.find(e => e.end === i);
+          const maxPlayedEnd = Math.max(...stats.endScores.map(e => e.end), 0);
+          let val = '';
+          if (endData) val = String(endData.oppScore);
+          else if (gameEnded && i > maxPlayedEnd) val = 'X';
+          doc.text(val, xPos + colWidth/2, yPos, { align: 'center' });
+          xPos += colWidth * 0.7;
+        }
+        doc.text(stats.extraEndOppScore !== undefined ? String(stats.extraEndOppScore) : '', xPos + colWidth/2, yPos, { align: 'center' });
+        yPos += 15;
+        
+        // Shooting % by End - calculate height needed
+        const endPctRows = Math.ceil(stats.endPercentages.length / 7); // ~7 badges per row
+        const shootingByEndHeight = 15 + (endPctRows * 12);
+        ensureSpace(shootingByEndHeight);
+        
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...secondaryColor);
+        doc.text('SHOOTING % BY END', margin, yPos);
+        yPos += 8;
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        xPos = margin;
+        stats.endPercentages.forEach(e => {
+          if (xPos + 25 > pageWidth - margin) {
+            xPos = margin;
+            yPos += 12;
+          }
+          doc.setFillColor(232, 244, 248);
+          doc.rect(xPos, yPos - 6, 22, 10, 'F');
+          doc.setTextColor(...textLight);
+          doc.text(`E${e.end}`, xPos + 2, yPos);
+          doc.setTextColor(...secondaryColor);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`${e.pct}%`, xPos + 12, yPos);
+          doc.setFont('helvetica', 'normal');
+          xPos += 25;
+        });
+        yPos += 20;
+        
+        // Shot Success Analysis Table - calculate total height needed
+        const ssaRowHeight = 7;
+        const ssaHeaderHeight = 16;
+        const ssaTotalHeight = ssaHeaderHeight + (stats.playerTable.length * ssaRowHeight) + ssaRowHeight + 10; // +1 for team total row
+        ensureSpace(ssaTotalHeight);
+        
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...secondaryColor);
+        doc.text('SHOT SUCCESS ANALYSIS', margin, yPos);
+        yPos += 8;
+        
+        // Table header - using IT/OT instead of symbols
+        doc.setFontSize(7);
+        doc.setFillColor(240, 240, 240);
+        doc.rect(margin, yPos - 4, contentWidth, 8, 'F');
+        
+        // Column widths: Player wider, Draws/T-Outs narrower
+        const ssaCols = [45, 18, 18, 18, 18, 18, 18, 18]; // Player=45, others=18
+        xPos = margin;
+        ['Player', 'IT', 'OT', 'Draws', 'IT', 'OT', 'T-Outs', 'Game'].forEach((header, i) => {
+          doc.text(header, xPos + 2, yPos);
+          xPos += ssaCols[i];
+        });
+        yPos += 8;
+        
+        // Player rows
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        
+        const formatStat = (count, pct) => {
+          if (count === 0) return '-';
+          return `(${count}) ${pct}%`;
+        };
+        
+        stats.playerTable.forEach((player, idx) => {
+          if (idx % 2 === 0) {
+            doc.setFillColor(248, 248, 248);
+            doc.rect(margin, yPos - 4, contentWidth, 7, 'F');
+          }
+          
+          xPos = margin;
+          doc.text(player.name.substring(0, 18), xPos + 2, yPos);
+          xPos += ssaCols[0];
+          doc.text(formatStat(player.draws.inTurnCount, player.draws.inTurnPct), xPos + 2, yPos);
+          xPos += ssaCols[1];
+          doc.text(formatStat(player.draws.outTurnCount, player.draws.outTurnPct), xPos + 2, yPos);
+          xPos += ssaCols[2];
+          doc.text(formatStat(player.draws.totalCount, player.draws.totalPct), xPos + 2, yPos);
+          xPos += ssaCols[3];
+          doc.text(formatStat(player.takeouts.inTurnCount, player.takeouts.inTurnPct), xPos + 2, yPos);
+          xPos += ssaCols[4];
+          doc.text(formatStat(player.takeouts.outTurnCount, player.takeouts.outTurnPct), xPos + 2, yPos);
+          xPos += ssaCols[5];
+          doc.text(formatStat(player.takeouts.totalCount, player.takeouts.totalPct), xPos + 2, yPos);
+          xPos += ssaCols[6];
+          doc.text(formatStat(player.total.count, player.total.pct), xPos + 2, yPos);
+          yPos += 7;
+        });
+        
+        // Team Total row
+        doc.setFillColor(26, 26, 46);
+        doc.rect(margin, yPos - 4, contentWidth, 7, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        
+        xPos = margin;
+        doc.text('Team Total', xPos + 2, yPos);
+        xPos += ssaCols[0];
+        doc.text(formatStat(stats.teamRow.draws.inTurnCount, stats.teamRow.draws.inTurnPct), xPos + 2, yPos);
+        xPos += ssaCols[1];
+        doc.text(formatStat(stats.teamRow.draws.outTurnCount, stats.teamRow.draws.outTurnPct), xPos + 2, yPos);
+        xPos += ssaCols[2];
+        doc.text(formatStat(stats.teamRow.draws.totalCount, stats.teamRow.draws.totalPct), xPos + 2, yPos);
+        xPos += ssaCols[3];
+        doc.text(formatStat(stats.teamRow.takeouts.inTurnCount, stats.teamRow.takeouts.inTurnPct), xPos + 2, yPos);
+        xPos += ssaCols[4];
+        doc.text(formatStat(stats.teamRow.takeouts.outTurnCount, stats.teamRow.takeouts.outTurnPct), xPos + 2, yPos);
+        xPos += ssaCols[5];
+        doc.text(formatStat(stats.teamRow.takeouts.totalCount, stats.teamRow.takeouts.totalPct), xPos + 2, yPos);
+        xPos += ssaCols[6];
+        doc.text(formatStat(stats.teamRow.total.count, stats.teamRow.total.pct), xPos + 2, yPos);
+        yPos += 15;
+        
+        // Miss Matrices - Side by Side
+        doc.setTextColor(...secondaryColor);
+        
+        const drawMissEntries = Object.entries(stats.missMatrixDraws).sort((a, b) => b[1] - a[1]);
+        const takeoutMissEntries = Object.entries(stats.missMatrixTakeouts).sort((a, b) => b[1] - a[1]);
+        
+        // Only render if at least one matrix has entries
+        if (drawMissEntries.length > 0 || takeoutMissEntries.length > 0) {
+          const maxEntries = Math.max(drawMissEntries.length, takeoutMissEntries.length);
+          const missMatrixHeight = 15 + (maxEntries * 6) + 10;
+          ensureSpace(missMatrixHeight);
+          
+          const leftColX = margin;
+          const rightColX = margin + (contentWidth / 2) + 5;
+          const colWidth = (contentWidth / 2) - 5;
+          
+          // Headers
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          if (drawMissEntries.length > 0) {
+            doc.text('MISS MATRIX - DRAWS', leftColX, yPos);
+          }
+          if (takeoutMissEntries.length > 0) {
+            doc.text('MISS MATRIX - TAKEOUTS', rightColX, yPos);
+          }
+          yPos += 8;
+          
+          // Render rows side by side
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          
+          for (let i = 0; i < maxEntries; i++) {
+            // Draw miss entry (left column)
+            if (i < drawMissEntries.length) {
+              const [miss, count] = drawMissEntries[i];
+              if (i % 2 === 0) {
+                doc.setFillColor(248, 248, 248);
+                doc.rect(leftColX, yPos - 4, colWidth - 10, 6, 'F');
+              }
+              doc.text(miss, leftColX + 2, yPos);
+              doc.text(String(count), leftColX + colWidth - 20, yPos);
+            }
+            
+            // Takeout miss entry (right column)
+            if (i < takeoutMissEntries.length) {
+              const [miss, count] = takeoutMissEntries[i];
+              if (i % 2 === 0) {
+                doc.setFillColor(248, 248, 248);
+                doc.rect(rightColX, yPos - 4, colWidth - 10, 6, 'F');
+              }
+              doc.text(miss, rightColX + 2, yPos);
+              doc.text(String(count), rightColX + colWidth - 20, yPos);
+            }
+            
+            yPos += 6;
+          }
+        }
+        
+        // Save PDF
+        doc.save(`curling_analytics_${gameDate.split('-').reverse().join('-')}.pdf`);
+        onNotify("PDF exported!", "success");
+      };
+
+      const handleNewGame = () => {
+        dispatch({ type: 'NEW_GAME' });
+        Storage.remove('curlingGame');
+        setShowNewGame(false);
+        onNotify("New game started!", "success");
+      };
+
+      if (!stats) {
+        return (
+          <div style={styles.card}>
+            <p style={{ textAlign: 'center', color: 'var(--text-light)' }}>
+              No shots recorded yet. Start tracking to see analytics.
+            </p>
+          </div>
+        );
+      }
+
+      // Style helpers for the Shot Success table
+      const statCellStyle = {
+        ...styles.td,
+        padding: '6px 8px',
+        fontSize: '13px',
+        textAlign: 'center'
+      };
+
+      const headerCellStyle = {
+        ...styles.th,
+        padding: '8px',
+        fontSize: '12px',
+        textAlign: 'center'
+      };
+
+      // Cell style with left border for section dividers
+      const sectionStartCell = {
+        ...statCellStyle,
+        borderLeft: '2px solid var(--secondary)'
+      };
+
+      const sectionStartHeader = {
+        ...headerCellStyle,
+        borderLeft: '2px solid var(--secondary)'
+      };
+
+      const formatStat = (count, pct) => {
+        if (count === 0 || pct === null) return "-";
+        return `(${count}) ${pct}%`;
+      };
+
+      // Get first end hammer team
+      const firstHammerTeam = firstEndHammer || teamName;
+
+      return (
+        <div>
+          {/* Game Summary */}
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>GAME SUMMARY</h2>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: '1fr auto 1fr',
+              alignItems: 'center',
+              gap: '24px',
+              textAlign: 'center',
+              padding: '20px 0'
+            }}>
+              <div>
+                <div style={{ fontSize: '14px', color: 'var(--text-light)', marginBottom: '8px' }}>
+                  {teamName}
+                </div>
+                <div style={{ 
+                  fontFamily: "'Bebas Neue', sans-serif", 
+                  fontSize: '64px',
+                  color: stats.totalTeamScore > stats.totalOppScore ? 'var(--success)' : 'var(--text)'
+                }}>
+                  {stats.totalTeamScore}
+                </div>
+              </div>
+              <div style={{ fontSize: '24px', color: 'var(--text-light)' }}>vs</div>
+              <div>
+                <div style={{ fontSize: '14px', color: 'var(--text-light)', marginBottom: '8px' }}>
+                  {opponent}
+                </div>
+                <div style={{ 
+                  fontFamily: "'Bebas Neue', sans-serif", 
+                  fontSize: '64px',
+                  color: stats.totalOppScore > stats.totalTeamScore ? 'var(--success)' : 'var(--text)'
+                }}>
+                  {stats.totalOppScore}
+                </div>
+              </div>
+            </div>
+            <div style={{ textAlign: 'center', color: 'var(--text-light)', fontSize: '14px' }}>
+              {competition} • {compRound} • {gameDate}
+            </div>
+          </div>
+
+          {/* Team Shooting % and Score by End Table - Side by Side */}
+          <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'stretch' }}>
+            {/* Team Shooting % - 25% */}
+            <div style={{ 
+              ...styles.card, 
+              flex: '0 0 calc(25% - 15px)', 
+              minWidth: '150px',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              <h2 style={styles.cardTitle}>TEAM SHOOTING %</h2>
+              <div style={{ 
+                flex: 1, 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center' 
+              }}>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '48px', color: 'var(--primary)' }}>
+                  {stats.overallPct}%
+                </div>
+              </div>
+            </div>
+
+            {/* Score by End Table - 75% */}
+            <div style={{ ...styles.card, flex: '1 1 calc(75% - 15px)', minWidth: '300px' }}>
+              <h2 style={styles.cardTitle}>SCORE BY END</h2>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ ...styles.table, fontSize: '13px', borderCollapse: 'collapse', border: '1px solid var(--text-light)' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...headerCellStyle, borderRight: '1px solid var(--text-light)' }}>Team</th>
+                      <th style={{ ...headerCellStyle, borderRight: '1px solid var(--text-light)' }}>Hammer</th>
+                      {Array.from({ length: totalEnds }, (_, i) => i + 1).map(endNum => (
+                        <th key={endNum} style={{ ...headerCellStyle, borderRight: '1px solid var(--text-light)' }}>{endNum}</th>
+                      ))}
+                      <th style={headerCellStyle}>EE</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ background: 'var(--ice)' }}>
+                      <td style={{ ...statCellStyle, fontWeight: '600', textAlign: 'left', borderRight: '1px solid var(--text-light)' }}>{teamName}</td>
+                      <td style={{ ...statCellStyle, borderRight: '1px solid var(--text-light)' }}>{firstHammerTeam === teamName ? '*' : ''}</td>
+                      {Array.from({ length: totalEnds }, (_, i) => i + 1).map(endNum => {
+                        const endData = stats.endScores.find(e => e.end === endNum);
+                        const maxPlayedEnd = Math.max(...stats.endScores.map(e => e.end), 0);
+                        let displayValue;
+                        if (endData) {
+                          displayValue = endData.teamScore;
+                        } else if (gameEnded && endNum > maxPlayedEnd) {
+                          displayValue = 'X';
+                        } else {
+                          displayValue = '';
+                        }
+                        return (
+                          <td key={endNum} style={{ 
+                            ...statCellStyle, 
+                            fontWeight: endData && endData.teamScore > 0 ? '700' : '400',
+                            borderRight: '1px solid var(--text-light)'
+                          }}>
+                            {displayValue}
+                          </td>
+                        );
+                      })}
+                      <td style={statCellStyle}>
+                        {stats.extraEndTeamScore !== undefined ? stats.extraEndTeamScore : ''}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style={{ ...statCellStyle, fontWeight: '600', textAlign: 'left', borderRight: '1px solid var(--text-light)' }}>{opponent}</td>
+                      <td style={{ ...statCellStyle, borderRight: '1px solid var(--text-light)' }}>{firstHammerTeam === opponent ? '*' : ''}</td>
+                      {Array.from({ length: totalEnds }, (_, i) => i + 1).map(endNum => {
+                        const endData = stats.endScores.find(e => e.end === endNum);
+                        const maxPlayedEnd = Math.max(...stats.endScores.map(e => e.end), 0);
+                        let displayValue;
+                        if (endData) {
+                          displayValue = endData.oppScore;
+                        } else if (gameEnded && endNum > maxPlayedEnd) {
+                          displayValue = 'X';
+                        } else {
+                          displayValue = '';
+                        }
+                        return (
+                          <td key={endNum} style={{ 
+                            ...statCellStyle, 
+                            fontWeight: endData && endData.oppScore > 0 ? '700' : '400',
+                            borderRight: '1px solid var(--text-light)'
+                          }}>
+                            {displayValue}
+                          </td>
+                        );
+                      })}
+                      <td style={statCellStyle}>
+                        {stats.extraEndOppScore !== undefined ? stats.extraEndOppScore : ''}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ fontSize: '11px', color: 'var(--text-light)', marginTop: '4px' }}>
+                  * = Hammer in 1st End • X = Unplayed • EE = Extra End
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Shooting % by End */}
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>SHOOTING % BY END</h2>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {stats.endPercentages.map(e => (
+                <div key={e.end} style={{
+                  background: 'var(--ice)',
+                  padding: '12px 20px',
+                  borderRadius: 'var(--radius-sm)',
+                  textAlign: 'center',
+                  minWidth: '70px'
+                }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-light)' }}>End {e.end}</div>
+                  <div style={{ fontWeight: '700', fontSize: '20px' }}>{e.pct}%</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Shot Success Analysis Table */}
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>SHOT SUCCESS ANALYSIS</h2>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ ...styles.table, fontSize: '13px', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={headerCellStyle} rowSpan={2}>Player</th>
+                    <th style={{ ...sectionStartHeader }} colSpan={3}>Draws</th>
+                    <th style={{ ...sectionStartHeader }} colSpan={3}>Take-outs</th>
+                    <th style={{ ...sectionStartHeader }} rowSpan={2}>Game</th>
+                  </tr>
+                  <tr>
+                    <th style={sectionStartHeader}>↻</th>
+                    <th style={headerCellStyle}>↺</th>
+                    <th style={headerCellStyle}>Total</th>
+                    <th style={sectionStartHeader}>↻</th>
+                    <th style={headerCellStyle}>↺</th>
+                    <th style={headerCellStyle}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.playerTable.map((p, idx) => (
+                    <tr key={p.name} style={{ background: idx % 2 === 0 ? 'white' : 'var(--ice)' }}>
+                      <td style={{ ...statCellStyle, textAlign: 'left', fontWeight: '500' }}>
+                        {p.name}
+                      </td>
+                      <td style={sectionStartCell}>{formatStat(p.draws.inTurnCount, p.draws.inTurnPct)}</td>
+                      <td style={statCellStyle}>{formatStat(p.draws.outTurnCount, p.draws.outTurnPct)}</td>
+                      <td style={{ ...statCellStyle, fontWeight: '600' }}>{formatStat(p.draws.totalCount, p.draws.totalPct)}</td>
+                      <td style={sectionStartCell}>{formatStat(p.takeouts.inTurnCount, p.takeouts.inTurnPct)}</td>
+                      <td style={statCellStyle}>{formatStat(p.takeouts.outTurnCount, p.takeouts.outTurnPct)}</td>
+                      <td style={{ ...statCellStyle, fontWeight: '600' }}>{formatStat(p.takeouts.totalCount, p.takeouts.totalPct)}</td>
+                      <td style={{ ...sectionStartCell, fontWeight: '700', background: 'var(--ice-dark)' }}>{formatStat(p.total.count, p.total.pct)}</td>
+                    </tr>
+                  ))}
+                  {/* Team Total Row */}
+                  <tr style={{ background: 'var(--secondary)', color: 'white' }}>
+                    <td style={{ ...statCellStyle, textAlign: 'left', fontWeight: '700' }}>Team Total</td>
+                    <td style={{ ...sectionStartCell, color: 'white' }}>{formatStat(stats.teamRow.draws.inTurnCount, stats.teamRow.draws.inTurnPct)}</td>
+                    <td style={{ ...statCellStyle, color: 'white' }}>{formatStat(stats.teamRow.draws.outTurnCount, stats.teamRow.draws.outTurnPct)}</td>
+                    <td style={{ ...statCellStyle, fontWeight: '600', color: 'white' }}>{formatStat(stats.teamRow.draws.totalCount, stats.teamRow.draws.totalPct)}</td>
+                    <td style={{ ...sectionStartCell, color: 'white' }}>{formatStat(stats.teamRow.takeouts.inTurnCount, stats.teamRow.takeouts.inTurnPct)}</td>
+                    <td style={{ ...statCellStyle, color: 'white' }}>{formatStat(stats.teamRow.takeouts.outTurnCount, stats.teamRow.takeouts.outTurnPct)}</td>
+                    <td style={{ ...statCellStyle, fontWeight: '600', color: 'white' }}>{formatStat(stats.teamRow.takeouts.totalCount, stats.teamRow.takeouts.totalPct)}</td>
+                    <td style={{ ...sectionStartCell, fontWeight: '700', color: 'white' }}>{formatStat(stats.teamRow.total.count, stats.teamRow.total.pct)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-light)', marginTop: '8px' }}>
+              ↻ = In-Turn (clockwise) • ↺ = Out-Turn (counter-clockwise) • Format: Count Percentage
+            </div>
+          </div>
+
+          {/* Miss Matrices */}
+          <div style={{ ...styles.grid, gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            {/* Draw Miss Matrix */}
+            <div style={styles.card}>
+              <h2 style={styles.cardTitle}>MISS MATRIX - DRAWS</h2>
+              {Object.keys(stats.missMatrixDraws).length > 0 ? (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ ...styles.table, fontSize: '13px' }}>
+                    <thead>
+                      <tr>
+                        <th style={headerCellStyle}>Miss Type</th>
+                        <th style={headerCellStyle}>Count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(stats.missMatrixDraws)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([miss, count], idx) => (
+                          <tr key={miss} style={{ background: idx % 2 === 0 ? 'white' : 'var(--ice)' }}>
+                            <td style={statCellStyle}>{miss}</td>
+                            <td style={{ ...statCellStyle, fontWeight: '600' }}>{count}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p style={{ textAlign: 'center', color: 'var(--text-light)', padding: '20px' }}>
+                  No draw misses recorded
+                </p>
+              )}
+            </div>
+
+            {/* Takeout Miss Matrix */}
+            <div style={styles.card}>
+              <h2 style={styles.cardTitle}>MISS MATRIX - TAKEOUTS</h2>
+              {Object.keys(stats.missMatrixTakeouts).length > 0 ? (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ ...styles.table, fontSize: '13px' }}>
+                    <thead>
+                      <tr>
+                        <th style={headerCellStyle}>Miss Type</th>
+                        <th style={headerCellStyle}>Count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(stats.missMatrixTakeouts)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([miss, count], idx) => (
+                          <tr key={miss} style={{ background: idx % 2 === 0 ? 'white' : 'var(--ice)' }}>
+                            <td style={statCellStyle}>{miss}</td>
+                            <td style={{ ...statCellStyle, fontWeight: '600' }}>{count}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p style={{ textAlign: 'center', color: 'var(--text-light)', padding: '20px' }}>
+                  No takeout misses recorded
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Export Buttons */}
+          <div style={{ 
+            display: 'flex', 
+            gap: '12px', 
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            marginTop: '24px'
+          }}>
+            <button
+              style={{ ...styles.button, ...styles.buttonSecondary }}
+              onClick={exportCSV}
+            >
+              📊 Export CSV
+            </button>
+            <button
+              style={{ ...styles.button, ...styles.buttonSecondary }}
+              onClick={exportPDF}
+            >
+              📄 Export PDF
+            </button>
+            <button
+              style={{ ...styles.button, ...styles.buttonPrimary }}
+              onClick={() => setShowNewGame(true)}
+            >
+              🥌 New Game
+            </button>
+          </div>
+
+          {showNewGame && (
+            <ConfirmModal
+              title="Start New Game?"
+              message="All current game data will be cleared. Make sure you've exported your data!"
+              onConfirm={handleNewGame}
+              onCancel={() => setShowNewGame(false)}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // ============================================
+    // MAIN APP COMPONENT
+    // ============================================
+    
+    function App() {
+      const [state, dispatch] = useReducer(gameReducer, initialGameState);
+      const [notification, setNotification] = useState(null);
+
+      // Load saved state on mount
+      useEffect(() => {
+        const saved = Storage.load('curlingGame');
+        if (saved) {
+          dispatch({ type: 'LOAD_STATE', payload: saved });
+        }
+      }, []);
+
+      // Save state on changes
+      useEffect(() => {
+        if (state.shots.length > 0 || state.teamName) {
+          Storage.save('curlingGame', state);
+        }
+      }, [state]);
+
+      const notify = useCallback((message, type = 'info') => {
+        setNotification({ message, type });
+      }, []);
+
+      const handleStartGame = () => {
+        dispatch({ type: 'START_GAME' });
+        notify("Game started! Begin tracking shots.", "success");
+      };
+
+      const gameStarted = state.shots.length > 0 || state.activeTab === 'tracking';
+
+      return (
+        <div style={styles.app}>
+          <Header 
+            activeTab={state.activeTab}
+            onTabChange={(tab) => dispatch({ type: 'SET_TAB', payload: tab })}
+            gameStarted={gameStarted}
+          />
+          
+          <main style={styles.main}>
+            {state.activeTab === 'setup' && (
+              <SetupPanel 
+                state={state} 
+                dispatch={dispatch}
+                onStartGame={handleStartGame}
+              />
+            )}
+            
+            {state.activeTab === 'tracking' && (
+              <TrackingPanel 
+                state={state} 
+                dispatch={dispatch}
+                onNotify={notify}
+              />
+            )}
+            
+            {state.activeTab === 'analytics' && (
+              <AnalyticsPanel 
+                state={state} 
+                dispatch={dispatch}
+                onNotify={notify}
+              />
+            )}
+
+            {state.activeTab === 'editor' && (
+              <EditorPanel 
+                state={state} 
+                dispatch={dispatch}
+                onNotify={notify}
+              />
+            )}
+          </main>
+
+          {notification && (
+            <Notification
+              message={notification.message}
+              type={notification.type}
+              onClose={() => setNotification(null)}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // ============================================
+    // RENDER
+    // ============================================
+    
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
