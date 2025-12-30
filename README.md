@@ -115,45 +115,6 @@ Points scored divided by maximum possible points (shots × 4), expressed as perc
 - Firefox
 - Edge
 
-## Technical Details
-
-- **Frontend**: React 18 (via CDN)
-- **Styling**: Inline styles with CSS custom properties
-- **Data Storage**: localStorage + IndexedDB
-- **PDF Generation**: jsPDF with autoTable plugin
-- **CSV Parsing**: PapaParse
-- **Service Worker**: Custom caching strategy for offline support
-
-## Version History
-
-### v51 (Current)
-- Added Team Competition Stats section in Competitions tab
-- Moved Target Heat Maps above Miss Analysis in Competitions tab
-- Fixed efficiency stats calculations (per-end scoring)
-- Added success notification for competition creation
-- Sorted competition graphs by game date
-
-### v50
-- Competition creation success notifications
-- Season Overview graphs sorted by earliest game date
-
-### v49
-- Fixed efficiency stats bug (was treating per-end scores as cumulative)
-- Corrected Hammer Eff, Steal Eff, and Steal Def calculations
-
-### v48
-- Moved Target Heat Maps above Miss Analysis in Analytics tab
-- Flipped heat map Y-axis in PDF exports
-- Fixed Competition Summary PDF export (added autoTable plugin)
-
-### Previous Versions
-- Season Stats with Overview and Competitions sub-tabs
-- Team filtering for multi-team tracking
-- Trend graphs for efficiency, shooting percentage, and misses
-- Heat maps with target location analysis
-- CSV and PDF export functionality
-- Competition archiving with IndexedDB
-- Backup and restore functionality
 
 ## Contributing
 
