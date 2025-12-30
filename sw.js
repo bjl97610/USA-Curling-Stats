@@ -1,4 +1,4 @@
-const CACHE_NAME = 'curling-tracker-v3';
+const CACHE_NAME = 'curling-tracker-v52';
 const ASSETS_TO_CACHE = [
   '',
   'index.html',

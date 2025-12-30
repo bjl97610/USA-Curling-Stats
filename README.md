@@ -1,100 +1,169 @@
 # USA Curling Shot Tracker
 
-A Progressive Web App (PWA) for tracking curling shots during games. Works offline and can be installed on any device.
+A comprehensive Progressive Web App (PWA) for tracking curling shots, analyzing performance, and managing competition history. Built for coaches, players, and teams to improve their game through detailed statistics and visual analytics.
+
+![USA Curling](usa_curling_logo.png)
 
 ## Features
 
-### Game Setup
-- Support for **4 Person**, **3 Person**, and **Mixed Doubles** game formats
-- Configurable game length (8 or 10 ends)
-- Team and opponent naming
-- Competition and round tracking
-- First end hammer selection
-- Customizable lineup from player roster
+### 🥌 Shot Tracking
+- **Multiple Game Types**: Support for 4-person teams and Mixed Doubles
+- **Detailed Shot Recording**: Track shot type, turn direction, outcome (0-4 scale), weight, and target location
+- **Miss Analysis**: Record primary and secondary miss reasons for each shot
+- **LSD Tracking**: Record Last Stone Draw measurements
+- **Power Play Support**: Track power play usage in Mixed Doubles games
+- **Real-time Score Tracking**: End-by-end score management with hammer tracking
 
-### Shot Tracking
-- Track every shot with detailed attributes:
-  - Ice conditions
-  - Turn (In-Turn / Out-Turn)
-  - Shot type (Draw, Takeout, Hit and Roll, Freeze, Guard, Raise, Peel, Throw Through)
-  - Outcome (0-4 scale)
-  - Miss type (Wide, Narrow, Heavy, Light, Burnt, Picked, Released Late, Released Early, Broke Wrong Way)
-  - Shot weight
-  - Key shot designation
-  - Power Play tracking (Mixed Doubles only)
-  - Comments
-- Automatic position assignment based on shot number
-- End-by-end score tracking
-- Hammer tracking with automatic updates
+### 📊 Analytics
+- **Shooting Percentages**: Overall, by player, by shot type (draws/takeouts), by turn (clockwise/counter-clockwise)
+- **Efficiency Stats**: Hammer efficiency, force efficiency, steal efficiency, steal defense
+- **Target Heat Maps**: Visual representation of shooting percentage by target location
+- **Miss Analysis**: Detailed breakdowns of misses by type, turn, shot type, and miss reason
+- **Player Filtering**: Filter all analytics by individual player
 
-### Analytics
-- **Score by End Table**: Visual game progression with hammer indicators and cumulative scores
-- **WCF Shot Success Analysis**: Player statistics broken down by:
-  - Draw shots (In-Turn, Out-Turn, Total)
-  - Takeout shots (In-Turn, Out-Turn, Total)
-  - Overall totals
-- **Miss Matrix**: Frequency analysis of miss types for Draws and Takeouts
-- Game outcome tracking (Win/Loss with final score)
+### 📁 Competition Management
+- **Competition History**: Archive games to competitions stored in IndexedDB
+- **Season Overview**: Aggregate stats across all competitions with trend graphs
+- **Team Filtering**: Filter season stats by team (useful for coaches tracking multiple teams)
+- **Competition Stats**: Per-competition statistics with game-by-game breakdowns
 
-### Editor
-- Modify game settings mid-game (with confirmation for lineup changes)
-- Edit scores for any end
-- Change hammer assignments
-- Adjust first end hammer setting (locked after game starts)
+### 📤 Export Options
+- **CSV Exports**: 
+  - Shot-by-shot data with all details
+  - Team stats with shooting percentages and efficiency metrics
+- **PDF Reports**: 
+  - Game analytics with player tables, miss analysis, and heat maps
+  - Competition summary reports
+- **Backup/Restore**: JSON backup of competition data for safekeeping
 
-### Export Options
-- **CSV Export**: Complete shot-by-shot data with all fields including:
-  - Player name and User ID
-  - Date (DD/MM/YYYY format)
-  - Competition details
-  - Shot details and outcomes
-  - Score differential
-  - End outcome (Scored, Stole, Forced, Blank, etc.)
-  - Game outcome
-  - Power Play (Mixed Doubles)
-- **PDF Export**: Professional game report including:
-  - Game summary header
-  - Score by End table
-  - Shot Success Analysis table
-  - Miss matrices (Draws and Takeouts side-by-side)
+### 📱 Progressive Web App
+- **Offline Support**: Works without internet connection after initial load
+- **Installable**: Add to home screen on mobile devices
+- **Responsive Design**: Optimized for phones, tablets, and desktops
 
-### Progressive Web App
-- **Works Offline**: Full functionality without internet connection
-- **Installable**: Add to home screen on any device
-- **Responsive**: Works on phones, tablets, and desktops
-- **Data Persistence**: Games saved locally in browser storage
+## Getting Started
 
-## Installation
+### Online Access
+Visit the hosted version at your GitHub Pages URL.
 
-### As a Web App
-Simply visit the hosted URL in any modern browser.
+### Local Development
+1. Clone the repository
+2. Open `index.html` in a modern web browser
+3. For full PWA features, serve via HTTPS (use a local server like `npx serve`)
 
-### Install on Device
-1. Open the app in your browser
-2. **iOS**: Tap Share → "Add to Home Screen"
-3. **Android**: Tap the menu → "Install app" or "Add to Home Screen"
-4. **Desktop**: Click the install icon in the address bar
+### Installation on Mobile
+1. Open the app in your mobile browser
+2. Tap "Add to Home Screen" (iOS Safari) or install prompt (Android Chrome)
+3. The app will work offline once installed
+
+## Usage Guide
+
+### Starting a New Game
+1. Select game type (4-Person or Mixed Doubles)
+2. Choose your team and opponent
+3. Select or create a competition
+4. Set the competition round and game date
+5. Configure stat tracking options (Quick Stats or Advanced Stats)
+6. Set first end hammer
+7. Click "Start Game"
+
+### Recording Shots
+1. Navigate to the Tracking tab
+2. Select the player throwing
+3. Choose turn direction (Clockwise/Counter-Clockwise)
+4. Select shot type
+5. Record outcome (0-4)
+6. Optionally record miss reasons, weight, and target location
+7. Click "Log Shot"
+
+### Viewing Analytics
+- **During Game**: Switch to Analytics tab to see real-time stats
+- **After Game**: Archive the game to a competition for permanent storage
+- **Season Stats**: View Season Stats tab for aggregate data across competitions
+
+### Managing Competitions
+1. Go to Season Stats → Competitions tab
+2. Select a competition from the dropdown
+3. View cumulative stats, filter by game, or export reports
+4. Use backup/restore to safeguard your data
+
+## Data Storage
+
+- **Current Game**: Stored in localStorage (persists until new game started)
+- **Competition History**: Stored in IndexedDB (permanent until manually deleted)
+- **Settings**: Stored in localStorage
+
+## Stat Definitions
+
+### Shooting Percentage
+Points scored divided by maximum possible points (shots × 4), expressed as percentage.
+
+### Efficiency Stats
+- **Hammer Efficiency**: Percentage of ends with hammer where team scored 2+ (excluding blanks)
+- **Force Efficiency**: Percentage of ends opponent had hammer where they scored exactly 1
+- **Steal Efficiency**: Percentage of ends without hammer where team stole 1+
+- **Steal Defense**: Percentage of ends with hammer where opponent stole (lower is better)
+
+### Shot Categories
+- **Draws**: Draw, Tap, Center Guard, Corner Guard, Freeze, Trick Shot
+- **Takeouts**: Dig, Peel, Double Peel, Takeout, Double Takeout, Hit and Roll, Runback
 
 ## Browser Support
 
-- Chrome 80+
-- Safari 14+
-- Firefox 75+
-- Edge 80+
+- Chrome (recommended)
+- Safari
+- Firefox
+- Edge
 
-## Offline Functionality
+## Technical Details
 
-The service worker caches all necessary assets for full offline operation:
-- Application files (HTML, manifest, icons)
-- External libraries (React, Babel, PapaParse, jsPDF)
-- Google Fonts
+- **Frontend**: React 18 (via CDN)
+- **Styling**: Inline styles with CSS custom properties
+- **Data Storage**: localStorage + IndexedDB
+- **PDF Generation**: jsPDF with autoTable plugin
+- **CSV Parsing**: PapaParse
+- **Service Worker**: Custom caching strategy for offline support
 
-Data is stored in the browser's localStorage, ensuring games persist between sessions.
+## Version History
+
+### v51 (Current)
+- Added Team Competition Stats section in Competitions tab
+- Moved Target Heat Maps above Miss Analysis in Competitions tab
+- Fixed efficiency stats calculations (per-end scoring)
+- Added success notification for competition creation
+- Sorted competition graphs by game date
+
+### v50
+- Competition creation success notifications
+- Season Overview graphs sorted by earliest game date
+
+### v49
+- Fixed efficiency stats bug (was treating per-end scores as cumulative)
+- Corrected Hammer Eff, Steal Eff, and Steal Def calculations
+
+### v48
+- Moved Target Heat Maps above Miss Analysis in Analytics tab
+- Flipped heat map Y-axis in PDF exports
+- Fixed Competition Summary PDF export (added autoTable plugin)
+
+### Previous Versions
+- Season Stats with Overview and Competitions sub-tabs
+- Team filtering for multi-team tracking
+- Trend graphs for efficiency, shooting percentage, and misses
+- Heat maps with target location analysis
+- CSV and PDF export functionality
+- Competition archiving with IndexedDB
+- Backup and restore functionality
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues or pull requests.
 
 ## License
 
-All rights reserved. The USA Curling logo and branding are trademarks of USA Curling.
+This project is designed for use by USA Curling teams and coaches.
 
-## Support
+## Acknowledgments
 
-For issues or feature requests, please contact USA Curling or open an issue in the repository.
+- USA Curling for inspiration and requirements
+- The curling community for feedback and testing
