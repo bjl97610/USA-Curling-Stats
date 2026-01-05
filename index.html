@@ -2422,7 +2422,7 @@
             miss: shotForm.miss,
             secondaryMiss: shotForm.secondaryMiss,
             weight: isAdvancedMode ? (shotForm.weight === "---" ? null : shotForm.weight) : null,
-            keyShot: isAdvancedMode ? shotForm.keyShot : null,
+            keyShot: shotForm.keyShot,  // Save in both Simple and Advanced mode
             targetDirection: isAdvancedMode ? (shotForm.targetDirection === "---" ? null : shotForm.targetDirection) : null,
             targetDepth: isAdvancedMode ? (shotForm.targetDepth === "---" ? null : shotForm.targetDepth) : null,
             score,
@@ -2976,13 +2976,24 @@
 
             {/* Comments for Simple mode */}
             {!isAdvancedMode && gameType === "Mixed Doubles" ? (
-              <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'minmax(140px, auto) 1fr', gap: '16px' }}>
+              <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(100px, 1fr))', gap: '16px' }}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Power Play</label>
                   <select
                     style={styles.select}
                     value={shotForm.powerPlay}
                     onChange={(e) => setShotForm(prev => ({ ...prev, powerPlay: e.target.value }))}
+                  >
+                    <option value="No">No</option>
+                    <option value="Yes">Yes</option>
+                  </select>
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Key Shot</label>
+                  <select
+                    style={styles.select}
+                    value={shotForm.keyShot}
+                    onChange={(e) => setShotForm(prev => ({ ...prev, keyShot: e.target.value }))}
                   >
                     <option value="No">No</option>
                     <option value="Yes">Yes</option>
@@ -2999,7 +3010,18 @@
                 </div>
               </div>
             ) : !isAdvancedMode && (
-              <div style={{ marginTop: '16px' }}>
+              <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'minmax(140px, auto) 1fr', gap: '16px' }}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Key Shot</label>
+                  <select
+                    style={styles.select}
+                    value={shotForm.keyShot}
+                    onChange={(e) => setShotForm(prev => ({ ...prev, keyShot: e.target.value }))}
+                  >
+                    <option value="No">No</option>
+                    <option value="Yes">Yes</option>
+                  </select>
+                </div>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Comments</label>
                   <textarea
@@ -3812,6 +3834,7 @@
         // Since s.score is already per-end, we use it directly (no need to calculate differences)
         let endsWithHammer = 0;
         let endsWithoutHammer = 0;
+        let blanksWithHammer = 0;
         let hammerEffNum = 0, hammerEffDenom = 0;
         let forceEffNum = 0, forceEffDenom = 0;
         let stealEffNum = 0, stealEffDenom = 0;
@@ -3825,6 +3848,9 @@
           
           if (hadHammer) {
             endsWithHammer++;
+            if (isBlank) {
+              blanksWithHammer++;
+            }
             // HammerEff: scored 2+ / not blank
             if (!isBlank) {
               hammerEffDenom++;
@@ -3861,9 +3887,16 @@
         // Determine if this is a Mixed Doubles game
         const isMixedDoubles = gameType === "Mixed Doubles";
         
+        // Format date for export
+        const formatDateForCSV = (dateStr) => {
+          const [year, month, day] = dateStr.split('-');
+          return `${day}/${month}/${year}`;
+        };
+        
         // Build CSV rows
         const csvData = Object.values(playerStats).map(p => ({
           'Name': p.name,
+          'Date': formatDateForCSV(gameDate),
           'Competition': isMixedDoubles ? '' : competition,
           'MD Competition': isMixedDoubles ? competition : '',
           'Competition Round': compRound,
@@ -3878,6 +3911,7 @@
           'CCW Takeout Count': p.ccwTakeout.count || '',
           'Ends w/Hammer': endsWithHammer,
           'Ends w/o Hammer': endsWithoutHammer,
+          'Blanks w/Hammer': blanksWithHammer,
           'Hammer Efficiency': hammerEff,
           'Force Efficiency': forceEff,
           'Steal Defense': stealDef,
@@ -6567,10 +6601,24 @@
             if (lastComp) setSelectedCompetition(lastComp);
           }
           
-          // Check storage usage
+          // Check storage usage - calculate actual IndexedDB size
           if (navigator.storage && navigator.storage.estimate) {
             const estimate = await navigator.storage.estimate();
-            setStorageUsage({ used: estimate.usage || 0, quota: estimate.quota || 0 });
+            // Also calculate approximate size from competitions data
+            let dataSize = 0;
+            comps.forEach(c => {
+              dataSize += JSON.stringify(c).length;
+            });
+            // Use the larger of browser estimate or our calculation (converted to bytes)
+            const usedBytes = Math.max(estimate.usage || 0, dataSize);
+            setStorageUsage({ used: usedBytes, quota: estimate.quota || (100 * 1024 * 1024) }); // Default 100MB quota if not available
+          } else {
+            // Fallback: calculate from data
+            let dataSize = 0;
+            comps.forEach(c => {
+              dataSize += JSON.stringify(c).length;
+            });
+            setStorageUsage({ used: dataSize, quota: 100 * 1024 * 1024 }); // Assume 100MB quota
           }
         } catch (e) {
           console.error('Failed to load competitions:', e);
@@ -6640,6 +6688,45 @@
 
         const isMixedDoubles = game.gameType === "Mixed Doubles";
         
+        // Calculate ScoreDiff for each end (cumulative score difference before that end)
+        const gameShots = game.shots.filter(s => !s.isLSD);
+        const endScores = {};
+        gameShots.forEach(s => {
+          if (s.score && !endScores[s.end]) {
+            endScores[s.end] = s.score;
+          }
+        });
+        
+        const getScoreDiff = (end) => {
+          let teamTotal = 0;
+          let oppTotal = 0;
+          const sortedEnds = Object.keys(endScores).map(Number).sort((a, b) => a - b);
+          for (const e of sortedEnds) {
+            if (e >= end) break;
+            const [ts, os] = endScores[e].split('-').map(Number);
+            teamTotal += ts;
+            oppTotal += os;
+          }
+          return teamTotal - oppTotal;
+        };
+        
+        const getEndPoints = (end, shot) => {
+          if (!shot.score) return '';
+          const [teamScore, oppScore] = shot.score.split('-').map(Number);
+          
+          if (teamScore > 0) return teamScore;
+          if (oppScore > 0) return -oppScore;
+          return 0; // Blank end
+        };
+        
+        // Get the end points for each end (from the last shot of each end)
+        const endPointsMap = {};
+        gameShots.forEach(s => {
+          if (s.score) {
+            endPointsMap[s.end] = getEndPoints(s.end, s);
+          }
+        });
+        
         const csvData = game.shots.map(s => ({
           'Team Name': game.teamName,
           Name: s.name || '',
@@ -6665,6 +6752,8 @@
           'Target Direction': s.isLSD ? '' : (s.targetDirection || ''),
           'Target Depth': s.isLSD ? '' : (s.targetDepth || ''),
           Comments: s.comments || '',
+          ScoreDiff: s.isLSD ? '' : getScoreDiff(s.end),
+          EndOutcome: s.isLSD ? '' : (endPointsMap[s.end] !== undefined ? endPointsMap[s.end] : ''),
           GameOutcome: game.finalScore ? (parseInt(game.finalScore.split('-')[0]) > parseInt(game.finalScore.split('-')[1]) ? 'Win' : parseInt(game.finalScore.split('-')[0]) < parseInt(game.finalScore.split('-')[1]) ? 'Loss' : 'Tie') : ''
         }));
 
@@ -6731,6 +6820,7 @@
         
         // Calculate efficiency stats using per-end scores directly
         let endsWithHammer = 0, endsWithoutHammer = 0;
+        let blanksWithHammer = 0;
         let hammerEffNum = 0, hammerEffDenom = 0;
         let forceEffNum = 0, forceEffDenom = 0;
         let stealEffNum = 0, stealEffDenom = 0;
@@ -6744,6 +6834,7 @@
           
           if (hadHammer) {
             endsWithHammer++;
+            if (isBlank) blanksWithHammer++;
             if (!isBlank) { hammerEffDenom++; if (teamPts >= 2) hammerEffNum++; }
             stealDefDenom++; if (oppPts >= 1) stealDefNum++;
           } else {
@@ -6760,8 +6851,15 @@
         
         const calcPct = (data) => data.count === 0 ? '' : Math.round((data.total / (data.count * 4)) * 100);
         
+        // Format date for export
+        const formatDateForCSV = (dateStr) => {
+          const [year, month, day] = dateStr.split('-');
+          return `${day}/${month}/${year}`;
+        };
+        
         const csvData = Object.values(playerStats).map(p => ({
           'Name': p.name,
+          'Date': formatDateForCSV(game.gameDate),
           'Competition': isMixedDoubles ? '' : game.competition,
           'MD Competition': isMixedDoubles ? game.competition : '',
           'Competition Round': game.compRound,
@@ -6776,6 +6874,7 @@
           'CCW Takeout Count': p.ccwTakeout.count || '',
           'Ends w/Hammer': endsWithHammer,
           'Ends w/o Hammer': endsWithoutHammer,
+          'Blanks w/Hammer': blanksWithHammer,
           'Hammer Efficiency': hammerEff,
           'Force Efficiency': forceEff,
           'Steal Defense': stealDef,
