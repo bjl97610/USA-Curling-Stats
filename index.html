@@ -2976,7 +2976,7 @@
 
             {/* Comments for Simple mode */}
             {!isAdvancedMode && gameType === "Mixed Doubles" ? (
-              <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(100px, 1fr))', gap: '16px' }}>
+              <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: '16px' }}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Power Play</label>
                   <select
@@ -3002,7 +3002,7 @@
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Comments</label>
                   <textarea
-                    style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
+                    style={{ ...styles.input, minHeight: '38px', resize: 'vertical', height: '100%' }}
                     value={shotForm.comments}
                     onChange={(e) => setShotForm(prev => ({ ...prev, comments: e.target.value }))}
                     placeholder="Optional notes about this shot..."
